@@ -1,0 +1,230 @@
+#!/bin/bash
+#
+# Monitors internet connectivity
+# Logs internet up and down events, and reports outage duration
+#
+# See internet-monitor.service for details on running as a service
+#
+function errexit() {
+    echo "$1"
+    exit
+}
+
+function logmsg() {
+    #
+    # $1: Date/time for logging to console
+    # $2: Message
+    #
+    dtim="$1"
+    msg="$2"
+    [ $syslog -eq 0 ] && logger "Internet-Monitor $msg" || echo "$dtim $msg"
+}
+
+function fmtdate() {
+    #
+    # Format date for printing
+    # $1: Date in canonical format
+    #
+    echo "$(date -d $1 "$dtfmt")"
+}
+
+function getcdate() {
+    #
+    # Returns date in canonical format
+    #
+    echo $(date "$cdtfmt")
+}
+
+function datediff() {
+    #
+    # Computes difference between two dates
+    # returns it as a string of Days:Hours:Minutes:Seconds
+    #
+    local days hours minutes seconds eseconds
+    local btime=$1 etime=$2
+    eseconds=$(($(/bin/date -d $etime +%s) - $(/bin/date -d $btime +%s)))
+    days=$(($eseconds/86400))
+    hours=$((($eseconds - $(($days*86400)))/3600))
+    minutes=$((($eseconds - $(($days*86400)) - $(($hours*3600)))/60))
+    seconds=$(($eseconds - $(($days*86400)) - $(($hours*3600)) - $(($minutes*60))))
+    echo "$days:$hours:$minutes:$seconds"
+}
+
+function getiplist() {
+    #
+    # Returns the list of IP addresses to ping
+    #
+    local iplist=$1
+    allips=""
+    if [ "${iplist:0:1}" == "@" ]
+    then
+	fn="${iplist:1:999}"
+	if [ -f "$fn" ]
+	then
+	    while read line
+	    do
+	    #
+	    # Strip trailing spaces, tabs, and comments
+	    #
+            newip="${line%%\#*}"    # Del EOL comments
+            newip="${newip%"${newip##*[^[:blank:]]}"}"  # Del trailing spaces/tabs
+	    [ "$newip" != "" ] && allips="$allips $newip"
+	    done < $fn
+	else
+	    echo "? File '$fn' not found"
+	    return
+	fi
+    else
+	IFS="," read -r -a ips <<<$iplist
+	for ip in ${ips[@]}
+	do
+	    allips="$allips $ip"
+	done
+    fi
+    echo "$allips"
+}    
+
+function online() {
+    #
+    # Test if IP address $1 is online
+    # Returns 0 if online, 1 if offline
+    #
+    local pcnt=1
+    if (ping -c $pcnt -W $pingwait $1 > /dev/null 2>&1 )
+    then
+	return 0
+    else
+	return 1
+    fi
+}
+
+function ckmonitoredips() {
+    #
+    # Check monitored IPs (not Internet IP) and report status
+    # $1: Monitored IP list
+    # $2: "initial " or ""
+    #
+    local initial=$2
+    local pl
+    read -r -a pl <<<"$1"
+    if [ -n pl[@] ]
+    then
+	for ip in ${pl[@]}
+	do
+	    online $ip && state="online" || state="offline"
+	    logmsg "$(fmtdate $(getcdate))" "Monitored Other    IP $ip ${initial}$state"
+	done
+    fi
+}
+
+function reportonline() {
+    #
+    # Report Internet IP status as online and test monitored IPs
+    #
+    dateon=$(getcdate)
+    logmsg "$(fmtdate $dateon)" "Monitored Internet IP $xip online"
+    ckmonitoredips "${pinglist[*]}"
+    pstate=0 ; curttw=$dttw
+}
+
+function reportoffline() {
+    #
+    # Report Internet IP status as offline and test monitored IPs
+    #
+    # $1: "starting " or ""
+    #
+    dateoff=$(getcdate)
+    [ -n "$actscript" ] && $actscript offline "$dateoff" $syslog
+    logmsg "$(fmtdate $dateoff)"  "Monitored Internet IP $xip ${1}offline"
+    ckmonitoredips "${pinglist[*]}" "$1"
+    pstate=1 ; curttw=1
+}
+
+#
+# Main
+#
+version="X0.92"
+cdtfmt="+%Y-%m-%dT%H:%M:%S"  # Canonical date format for manipulation
+
+dtfmt="+%Y-%m-%d %H:%M:%S"   # Date format for stdout output
+dttw="10"                    # Default sleep time in seconds if network online
+syslog=1                     # 1=log to stdout, 0=log to syslog
+iplist=""                    # List of additional IP addresses to monitor
+pingwait=1                   # Time to wait for a ping response
+xip="1.1.1.1"                # Default Internet IP to ping
+
+script=$(basename $0)
+OARGS=$(getopt -o h --longoptions help,syslog,interval:,internet:,datefmt:,action:,ping: -n $script -- "$@")
+[ $? != 0 ] && echo "? ${script}: Command parse failed" && exit 1
+eval set -- "$OARGS"
+
+while true
+do
+    case "$1" in
+	# 'shift 2' if switch has argument, else just 'shift'
+	--action)      actscript=$2  ; shift 2 ;;
+	--datefmt)     dtfmt=$2      ; shift 2 ;;
+	--interval)    dttw=$2       ; shift 2 ;;
+	--internet)    xip=$2        ; shift 2 ;;
+	--ping)        iplist=$2     ; shift 2 ;;
+	--pingwait)    pingwait=$2   ; shift 2 ;;
+	--syslog)      syslog=0      ; shift ;;
+	--)            shift ; break ;;
+	-h|--help)     echo "$script $version" ;
+echo "" ;
+echo "Usage:" ;
+echo "$script [switches]" ;
+echo "Monitor and report Internet up/down transitions" ;
+echo "" ;
+echo "Switches" ;
+echo " --interval seconds  Number of seconds between tests when online [10]" ;
+echo " --internet ip       IP address to ping for testing [1.1.1.1]" ;
+echo " --ping ip           Comma-separated list of IP address to check when internet is down" ;
+echo "                      or @file for a list of additional IPs to check" ;
+echo " --pingwait seconds  Wait this many seconds for ping response [1]" ;
+echo " --syslog            Log output to syslog instead of stdout" ;
+echo " --action script     Run the action script on internet state changes" ;
+echo " --datefmt str       Use this date format w/stdout output [%Y-%m-%d %H:%M:%S]" ;
+echo " --version           Print internet-monitor version number" ;
+echo "" ;
+echo "Action script arguments: start|online|offline datetime delta" ;
+echo " datetime: Event date/time in the canonical format +%Y-%m-%dT%H:%M:%S" ;
+echo " delta:    Time offline encoded as days:hours:minutes:seconds" ;
+echo " delta is only present if first argument is 'online'" ;
+shift ; exit ;;
+	*) echo "? $0: Internal error" ; exit 1 ;;
+    esac
+done
+
+tmp=$(($dttw))
+[ $tmp -eq 0 ] && errexit "? Interval '$dttw' is incorrect"
+[ -n "$actscript" ] && [ ! -x $actscript ] && errexit "? Action script '$actscript' not found or not executable"
+ips="$(getiplist $iplist)"
+[ "${ips:0:1}" == "?" ] && errexit "$ips" || read -r -a pinglist <<<$ips
+
+logmsg "$(getcdate)" "Starting"
+msg="Monitoring Internet IP $xip"
+[ "${pinglist[0]}" != "" ] && msg="$msg and other IPs ${pinglist[*]}"
+logmsg "$(getcdate)" "$msg"
+[ -n "$actscript" ]  && $actscript start $(getcdate) $syslog
+online $xip && reportonline || reportoffline "starting "   # Also sets pstate and curttw appropriately
+#
+# Loop forever monitoring internet connectivity
+#
+while [ 1 ]
+do
+    if online $xip
+    then
+	if [ $pstate -eq 1 ]   # pstate=1 if previous state offline, report the change
+	then
+	    reportonline
+	    ddiff=$(datediff $dateoff $dateon)
+	    [ -n "$actscript" ] && $actscript online "$dateon" $syslog "$ddiff"
+	    IFS=":" read -r -a edate <<<$ddiff
+	    logmsg "$(fmtdate $(getcdate))" "Outage Duration: ${edate[0]} days ${edate[1]} hours ${edate[2]} minutes ${edate[3]} seconds"
+	fi
+    else
+	[ $pstate -eq 0 ] && reportoffline ""
+    fi
+    sleep $curttw
+done

@@ -1,0 +1,18 @@
+[Unit]
+Description=Internet Online Monitor
+Requires=network-online.target
+
+[Service]
+# --internet IP                         Internet IP address to ping [1.1.1.1]
+# --interval N                          When online, perform check every N seconds [10]
+# --ping IPlist                         Comma-separated list of additional IP addresses to ping [""]
+# --pingwait N                          Wait N seconds for a ping response [1]
+# --action /full/path/to/action/script  Action script on connectivity state transitions
+# --syslog                              Log to syslog
+ExecStart=/usr/local/bin/internet-monitor --syslog --interval 10 --internet 1.1.1.1
+User=root
+StandardInput=null
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

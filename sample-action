@@ -1,0 +1,32 @@
+#!/bin/bash
+#
+# Example internet-monitor Action script
+# Called when internet-monitor starts up or detects a network state transition
+#
+# Arguments:
+#
+# $1: start|online|offline
+# $2: event date/time in canonical format
+# $3: 0: Log to syslog, or 1: Log to stdout
+# $4: Outage duration in format "days:hours:minutes:seconds"
+#
+
+syslog=$3
+if [ "$4" != "" ]
+then
+    IFS=":" read -r -a edate <<<$4
+    days=${edate[0]}
+    hours=${edate[1]}
+    minutes=${edate[2]}
+    seconds=${edate[3]}
+    dmsg="$days days $hours hours $minutes minutes $seconds seconds"
+if [ $syslog -eq 0 ]
+then
+    logger "Internet-Monitor Action: $1"
+    logger "Internet-Monitor Action: Event Date/time: $2"
+    [ "$1" == "online" ] && logger "Internet-Monitor Action: Duration: $dmsg"
+else
+    echo "Internet-Monitor Action: $1"
+    echo "Internet-Monitor Action: Event Date/Time: $2"
+    [ "$1" == "online" ] && echo "Internet-Monitor Action: Duration: $dmsg"
+fi
