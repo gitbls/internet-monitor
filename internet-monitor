@@ -102,17 +102,22 @@ function ckmonitoredips() {
     #
     # Check monitored IPs (not Internet IP) and report status
     # $1: Monitored IP list
-    # $2: "initial " or ""
+    # $2: "starting " or ""
+    # $3: 0 if Internet online, 1 if offline
     #
-    local initial=$2
+    local initial=$2 inetstate=$3
     local pl
     read -r -a pl <<<"$1"
     if [ -n pl[@] ]
     then
 	for ip in ${pl[@]}
 	do
-	    online $ip && state="online" || state="offline"
-	    logmsg "$(fmtdate $(getcdate))" "Monitored Other    IP $ip ${initial}$state"
+	    # Only report monitored IP offline if Internet offline
+	    if [ $inetstate -eq 1 ]
+	    then
+		online $ip && state="online" || state="offline"
+		[ "$state" == "offline" ] && logmsg "$(fmtdate $(getcdate))" "Monitored Other    IP $ip ${initial}$state"
+	    fi
 	done
     fi
 }
@@ -123,7 +128,7 @@ function reportonline() {
     #
     dateon=$(getcdate)
     logmsg "$(fmtdate $dateon)" "Monitored Internet IP $xip online"
-    ckmonitoredips "${pinglist[*]}"
+    ckmonitoredips "${pinglist[*]}" "" 0
     pstate=0 ; curttw=$dttw
 }
 
@@ -136,14 +141,14 @@ function reportoffline() {
     dateoff=$(getcdate)
     [ -n "$actscript" ] && $actscript offline "$dateoff" $syslog
     logmsg "$(fmtdate $dateoff)"  "Monitored Internet IP $xip ${1}offline"
-    ckmonitoredips "${pinglist[*]}" "$1"
+    ckmonitoredips "${pinglist[*]}" "$1" 1
     pstate=1 ; curttw=1
 }
 
 #
 # Main
 #
-version="X0.92"
+version="X0.93"
 cdtfmt="+%Y-%m-%dT%H:%M:%S"  # Canonical date format for manipulation
 
 dtfmt="+%Y-%m-%d %H:%M:%S"   # Date format for stdout output
