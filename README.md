@@ -12,6 +12,7 @@ internet-monitor is easily installed and runs as a systemd service.
 Download the internet-monitor files from GitHub, and edit the file /etc/systemd/system/internet-monitor.service as needed for your configuration.
 
 * `sudo curl -L https://raw.githubusercontent.com/gitbls/internet-monitor/master/internet-monitor -o /usr/local/bin/internet-monitor`
+* `sudo chmod 755 /usr/local/bin/internet-monitor`
 * `sudo curl -L https://raw.githubusercontent.com/gitbls/internet-monitor/master/internet-monitor.service -o /etc/systemd/system/internet-monitor.service`
 * `sudo nano /etc/systemd/system/internet-monitor.service` &mdash; Edit the ExecStart command line to adjust as needed.
 * `sudo systemctl daemon-reload`
