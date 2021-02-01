@@ -24,24 +24,31 @@ internet-monitor can be run from a terminal with logging to stdout. It is best r
 
 internet-monitor takes several switches:
 
-* `--interval seconds` &mdash; Sets the number of seconds between internet IP ping checks. The default is 10 seconds.
+* `--action /full/path/to/script` &mdash; Provides an action script to be called on internet connectivity state transitions. See Action Script below.
+* `--datefmt str` &mdash; Sets the date format string for output to stdout. The default is "+%Y-%m-%d %H:%M:%S". The plus sign is required. This is ignored if logging to syslog.
+* `--ddns /full/path/to/script` &mdash; Action script to call when External IP Address changes
+* `--einterval N` &mdash; Number of --interval waits between External IP Address check if --ddns specified. The default is 60.
 * `--internet IP` &mdash; Sets the internet IP address to ping. The default is 1.1.1.1
+* `--interval seconds` &mdash; Sets the number of seconds between internet IP ping checks. The default is 10 seconds.
+* `--noping`  &mdash; Don't do any pinging. Only monitor External IP Address.
 * `--ping IP` &mdash; Sets an additional list of IP addresses to ping. The default is "". See Usage Hints below.
 * `--pingwait seconds` &mdash; Sets the number of seconds to wait for a response to a ping. The default is 1 second.
-* `--datefmt str` &mdash; Sets the date format string for output to stdout. The default is "+%Y-%m-%d %H:%M:%S". The plus sign is required. This is ignored if logging to syslog.
-* `--action /full/path/to/script` &mdash; Provides an action script to be called on internet connectivity state transitions. See Action Script below.
+* `--pingcount N` &mdash; Specify that ping testing with a ping count of N should be done against the Internet IP Address.
 * `--syslog` &mdash; By default internet-monitor writes to stdout. `--syslog` redirects the output to the system log.
 * `--version` &mdash; Prints the internet-monitor version information and exits.
 
-## Action Script
+## Action Scripts
 
 If `--action /full/path/to/script` is provided on the command line, internet-monitor will call the script in the following instances. In each case, the syslog argument will be 0 to write to syslog, 1 to write to stdout.
 
 * **On startup** &mdash; Arguments provided are: "start" "date/time (canonical format)" syslog. 
 * **Internet goes offline** &mdash; Arguments are: "offline" "date/time (canonical format)" syslog. 
 * **Internet goes online** &mdash; Arguments are: "online" "date/time (canonical format)" syslog offline-duration. offline-duration is in the format "days:hours:minutes:seconds"
+* **Ping test result**  &mdash;  Arguments are: "ping" datetime pingmin pingavg pingmax pingmdev loss msec
 
-See the sample action script on this github for further information
+See the sample action script on this github for further information.
+
+If `--ddns` is specified internet-monitor will also monitor your External IP Address for changes. When it changes, internet-monitor will call the action script with the arguments: update new-external-ip old-external-ip
 
 ## Usage Hints
 

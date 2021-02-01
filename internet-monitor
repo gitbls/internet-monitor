@@ -35,6 +35,13 @@ function getcdate() {
     echo $(date "$cdtfmt")
 }
 
+function fmtcdate() {
+    #
+    # Formats canonical date for printing
+    #
+    echo $(fmtdate $(getcdate))
+}
+
 function datediff() {
     #
     # Computes difference between two dates
@@ -105,9 +112,9 @@ function ckmonitoredips() {
     # $2: "starting " or ""
     # $3: 0 if Internet online, 1 if offline
     #
-    local initial=$2 inetstate=$3
+    local iplist="$1" initial=$2 inetstate=$3
     local pl
-    read -r -a pl <<<"$1"
+    read -r -a pl <<<"$iplist"
     if [ -n pl[@] ]
     then
 	for ip in ${pl[@]}
@@ -128,6 +135,7 @@ function reportonline() {
     #
     dateon=$(getcdate)
     logmsg "$(fmtdate $dateon)" "Monitored Internet IP $xip online"
+    [ -n "$actscript" ] && $actscript online "$dateon" $syslog
     ckmonitoredips "${pinglist[*]}" "" 0
     pstate=0 ; curttw=$dttw
 }
@@ -139,27 +147,81 @@ function reportoffline() {
     # $1: "starting " or ""
     #
     dateoff=$(getcdate)
-    [ -n "$actscript" ] && $actscript offline "$dateoff" $syslog
     logmsg "$(fmtdate $dateoff)"  "Monitored Internet IP $xip ${1}offline"
+    [ -n "$actscript" ] && $actscript offline "$dateoff" $syslog
     ckmonitoredips "${pinglist[*]}" "$1" 1
     pstate=1 ; curttw=1
+}
+
+function getextip() {
+    local extip providers=( 
+	"whatismyip.akamai.com/" \
+	"dynupdate.no-ip.com/ip.php" \
+	"ident.me/" \
+	"l2.io/ip" \
+	"bot.whatismyipaddress.com/" \
+	"icanhazip.com/" \
+	"ifconfig.me/" \
+	"wgetip.com/" \
+	"zzipinfo.io/ip[curl]" \
+	)
+    for purl in ${providers[@]}
+    do
+	url="${purl%%\[*\]}"
+	getop="${purl##$url}"    # Get the [op] part
+	[ "$getop" == "" ] && getop="[curl]"
+	if [ "$getop" == "[curl]" ]
+	then
+	    extip=$(curl -s $url)
+	    [ "$extip" != "" ] && echo "$extip" && return
+# Add other methods like this
+#	elif [ "$getop" == "[foo]" ]
+#	then
+#	    echo "fooperation"
+	fi
+    done
+    echo ""
+    return
+}
+
+function checkextip() {
+    local newextip=$(getextip)
+    echo "got $newextip from getextip"
+    if [ "$newextip" == "" ]
+    then
+	logmsg "$(fmtcdate)" "%% Unable to obtain External IP Address"
+	$actscript "noupdate" "" $myextip
+    fi
+    if [ "$newextip" != "" -a "$newextip" != "$myextip" ]
+    then
+	logmsg "$(fmtcdate)" "External IP Address changed from myextip to $newextip"
+	$actscript "update" $newextip $myextip
+	myextip=$newextip
+    fi
 }
 
 #
 # Main
 #
-version="X0.93"
+version="X0.94"
 cdtfmt="+%Y-%m-%dT%H:%M:%S"  # Canonical date format for manipulation
-
 dtfmt="+%Y-%m-%d %H:%M:%S"   # Date format for stdout output
-dttw="10"                    # Default sleep time in seconds if network online
+dttw=10                      # Sleep time in seconds if network online
+edttw=60                     # Sleep time intervals between external IP address checks [10 minutes]
 syslog=1                     # 1=log to stdout, 0=log to syslog
 iplist=""                    # List of additional IP addresses to monitor
 pingwait=1                   # Time to wait for a ping response
 xip="1.1.1.1"                # Default Internet IP to ping
+ddns=0                       # 1=Do External IP Address change checking
+actscript=""                 # Action script 
+myextip=$(getextip)          # Prime the pump
+noping=0                     # 0=also ping. 1=external IP monitor only
+pingcount=0
+pingct=""
 
 script=$(basename $0)
-OARGS=$(getopt -o h --longoptions help,syslog,interval:,internet:,datefmt:,action:,ping: -n $script -- "$@")
+cmdline="$0 $*"
+OARGS=$(getopt -o h --longoptions help,action:,datefmt:,ddns,einterval:,internet:,interval:,noping,ping:,pingcount:,syslog -n $script -- "$@")
 [ $? != 0 ] && echo "? ${script}: Command parse failed" && exit 1
 eval set -- "$OARGS"
 
@@ -169,33 +231,57 @@ do
 	# 'shift 2' if switch has argument, else just 'shift'
 	--action)      actscript=$2  ; shift 2 ;;
 	--datefmt)     dtfmt=$2      ; shift 2 ;;
-	--interval)    dttw=$2       ; shift 2 ;;
+	--ddns)        ddns=1        ; shift 1 ;;
+	--einterval)   edttw=$2      ; shift 2 ;;
 	--internet)    xip=$2        ; shift 2 ;;
+	--interval)    dttw=$2       ; shift 2 ;;
+	--noping)      noping=1      ; shift ;;
 	--ping)        iplist=$2     ; shift 2 ;;
+	--pingcount)   pingct=$2     ; shift 2 ;;
 	--pingwait)    pingwait=$2   ; shift 2 ;;
 	--syslog)      syslog=0      ; shift ;;
 	--)            shift ; break ;;
 	-h|--help)     echo "$script $version" ;
-echo "" ;
-echo "Usage:" ;
-echo "$script [switches]" ;
-echo "Monitor and report Internet up/down transitions" ;
-echo "" ;
-echo "Switches" ;
-echo " --interval seconds  Number of seconds between tests when online [10]" ;
-echo " --internet ip       IP address to ping for testing [1.1.1.1]" ;
-echo " --ping ip           Comma-separated list of IP address to check when internet is down" ;
-echo "                      or @file for a list of additional IPs to check" ;
-echo " --pingwait seconds  Wait this many seconds for ping response [1]" ;
-echo " --syslog            Log output to syslog instead of stdout" ;
-echo " --action script     Run the action script on internet state changes" ;
-echo " --datefmt str       Use this date format w/stdout output [%Y-%m-%d %H:%M:%S]" ;
-echo " --version           Print internet-monitor version number" ;
-echo "" ;
-echo "Action script arguments: start|online|offline datetime delta" ;
-echo " datetime: Event date/time in the canonical format +%Y-%m-%dT%H:%M:%S" ;
-echo " delta:    Time offline encoded as days:hours:minutes:seconds" ;
-echo " delta is only present if first argument is 'online'" ;
+echo $"Usage:
+$script [switches]
+Monitor and report Internet up/down transitions
+
+Switches
+ --action script     Script to run for internet state changes/external IP changes/ping results
+ --datefmt str       Use this date format w/stdout output [%Y-%m-%d %H:%M:%S]
+ --ddns              Perform External IP Address change checking
+                      If the External IP Address changes, call the action script
+ --einterval waits   Number of --interval waits between External IP Address checks if --ddns [60]
+ --internet ip       IP address to ping for testing [1.1.1.1]
+ --interval seconds  Number of seconds between tests when online [10]
+ --noping            Only monitor External IP Address, not internet up/down
+ --ping ip           Comma-separated list of IP address to check when internet is down
+                      or @file for a list of additional IPs to check
+ --pingcount n       Do a ping test to --internet IP every --interval seconds
+ --pingwait seconds  Wait this many seconds for ping response [1]
+ --syslog            Log output to syslog instead of stdout
+
+Action script arguments
+ Internet accessibility state changes: start|online|offline|ping datetime delta
+  datetime: Event date/time in the canonical format +%Y-%m-%dT%H:%M:%S
+  delta:    Time offline encoded as days:hours:minutes:seconds
+  delta is only present if first argument is 'online'
+
+ Dynamic DNS External IP Address change checking:
+  update|noupdate new-external-ip old-external-ip
+  update               Exernal IP Address has changed
+  noupdate             Unable to retrieve External IP Address
+
+ Ping result logging:
+  ping datetime pingmin pingavg pingmax pingmdev loss% msec
+  canonical-date-time: Date/time of ping in form %Y-%m-%dT%H:%M:%S
+  pingmin:             Minimum ping time sampled
+  pingavg:             Average ping time
+  pingmax:             Maximum ping time sampled
+  pingmdev:            Standard deviation (how far each ping rtt is from mean rtt)
+  loss%:               % packet loss
+  msec                 Time in msec for the ping"
+
 shift ; exit ;;
 	*) echo "? $0: Internal error" ; exit 1 ;;
     esac
@@ -204,32 +290,97 @@ done
 tmp=$(($dttw))
 [ $tmp -eq 0 ] && errexit "? Interval '$dttw' is incorrect"
 [ -n "$actscript" ] && [ ! -x $actscript ] && errexit "? Action script '$actscript' not found or not executable"
+[ $ddns -eq 1 -a -z "$actscript" ] && errexit "? --ddns requires --action"
+if [ -n "$pingct" ]
+then
+    pingcount=$(($pingct))
+    [ $pingcount -eq 0 ] && errexit "? Ping count '$pingct' is incorrect"
+    [ -z "$actscript" ] && errexit "? --pingcount requires --action"
+fi
 ips="$(getiplist $iplist)"
+pinglist=()
 [ "${ips:0:1}" == "?" ] && errexit "$ips" || read -r -a pinglist <<<$ips
 
-logmsg "$(getcdate)" "Starting"
+#
+# Print introductory information
+#
+logmsg "$(fmtcdate)" "Starting"
+logmsg "$(fmtcdate)" "Command Line: $cmdline"
 msg="Monitoring Internet IP $xip"
 [ "${pinglist[0]}" != "" ] && msg="$msg and other IPs ${pinglist[*]}"
-logmsg "$(getcdate)" "$msg"
+logmsg "$(fmtcdate)" "$msg"
+[ "$myextip" != "" ] && msg="External IP Address $myextip" || msg="%% Unable to obtain initial external IP address...continuing"
+logmsg "$(fmtcdate)" "$msg"
 [ -n "$actscript" ]  && $actscript start $(getcdate) $syslog
+if [ $ddns -eq 1 ]
+then
+    ewait=$((dttw*edttw))
+    logmsg "$(fmtcdate)" "External IP check every $ewait seconds"
+fi
+logmsg "$(fmtcdate)" "Action script: $actscript"
 online $xip && reportonline || reportoffline "starting "   # Also sets pstate and curttw appropriately
 #
 # Loop forever monitoring internet connectivity
 #
-while [ 1 ]
-do
-    if online $xip
-    then
-	if [ $pstate -eq 1 ]   # pstate=1 if previous state offline, report the change
+if [ $noping -eq 1 ]
+then
+    #
+    # Only monitoring External IP Address
+    #
+    while [ 1 ]
+    do
+	sleep $ewait
+	checkextip
+    done
+else
+    #
+    # Monitor Internet Outages, External IP Address, and optionally ping times
+    #
+    el=0
+    while [ 1 ]
+    do
+	if online $xip
 	then
-	    reportonline
-	    ddiff=$(datediff $dateoff $dateon)
-	    [ -n "$actscript" ] && $actscript online "$dateon" $syslog "$ddiff"
-	    IFS=":" read -r -a edate <<<$ddiff
-	    logmsg "$(fmtdate $(getcdate))" "Outage Duration: ${edate[0]} days ${edate[1]} hours ${edate[2]} minutes ${edate[3]} seconds"
+	    if [ $pstate -eq 1 ]   # pstate=1 if previous state offline, report the change
+	    then
+		reportonline
+		ddiff=$(datediff $dateoff $dateon)
+		[ -n "$actscript" ] && $actscript online "$dateon" $syslog "$ddiff"
+		IFS=":" read -r -a edate <<<$ddiff
+		logmsg "$(fmtcdate)" "Outage Duration: ${edate[0]} days ${edate[1]} hours ${edate[2]} minutes ${edate[3]} seconds"
+	    fi
+	    if [ $pingcount -ne 0 ]
+	    then
+		#
+		# Do a ping test against external IP and call action script with results
+		#
+		loss="" ms="" rtt="" xms="" min="" avg="" max="" mdev=""
+		pingdate=$(getcdate)
+		while read line
+		do
+		    if [[ "$line" =~ "transmitted" ]]
+		    then
+			read a b c d e loss f g h ms <<<$line
+		    elif [[ "$line" =~ "min/avg/max/mdev" ]]
+		    then
+			read a b c rtt xms <<<$line
+			IFS="/" read min avg max mdev <<<$rtt
+		    fi
+		done < <(ping -c $pingcount $xip)
+		#
+		# Call ping action script
+		#
+		[ "$loss" != "" ] && $actscript ping $pingdate $min $avg $max $mdev ${loss%%%} ${ms%%ms}
+	    fi
+	    if [ $(($el%$edttw)) -eq 0 ]
+	    then
+		el=0
+		[ $ddns -eq 1 ] && checkextip
+	    fi
+	    el=$((el+1))
+	else
+	    [ $pstate -eq 0 ] && reportoffline ""
 	fi
-    else
-	[ $pstate -eq 0 ] && reportoffline ""
-    fi
-    sleep $curttw
-done
+	sleep $curttw
+    done
+fi

@@ -5,28 +5,59 @@
 #
 # Arguments:
 #
-# $1: start|online|offline
-# $2: event date/time in canonical format
-# $3: 0: Log to syslog, or 1: Log to stdout
-# $4: Outage duration in format "days:hours:minutes:seconds"
+# $1: start|online|offline|ping|update
 #
+# If $1="start|online|offline" arguments are:
+#   $2: event date/time in canonical format
+#   $3: 0: Log to syslog, or 1: Log to stdout
+#   $4: Outage duration in format "days:hours:minutes:seconds"
+#
+# If $1="ping" arguments $2-$8 are:
+#   datetime pingmin pingavg pingmax pingmdev loss msec (direct from the ping command)
+#
+# If $1="update" arguments are:
+#   $2: new-external-IP-address
+#   $3: old-external-ip-address
 
-syslog=$3
-if [ "$4" != "" ]
-then
-    IFS=":" read -r -a edate <<<$4
-    days=${edate[0]}
-    hours=${edate[1]}
-    minutes=${edate[2]}
-    seconds=${edate[3]}
-    dmsg="$days days $hours hours $minutes minutes $seconds seconds"
-if [ $syslog -eq 0 ]
-then
-    logger "Internet-Monitor Action: $1"
-    logger "Internet-Monitor Action: Event Date/time: $2"
-    [ "$1" == "online" ] && logger "Internet-Monitor Action: Duration: $dmsg"
-else
-    echo "Internet-Monitor Action: $1"
-    echo "Internet-Monitor Action: Event Date/Time: $2"
-    [ "$1" == "online" ] && echo "Internet-Monitor Action: Duration: $dmsg"
-fi
+
+case "${1,,}" in
+    start|online|offline) 
+	syslog=$3
+	if [ "$4" != "" ]
+	then
+	    IFS=":" read -r -a edate <<<$4
+	    days=${edate[0]}
+	    hours=${edate[1]}
+	    minutes=${edate[2]}
+	    seconds=${edate[3]}
+	    dmsg="$days days $hours hours $minutes minutes $seconds seconds"
+	    if [ $syslog -eq 0 ]
+	    then
+		logger "Internet-Monitor Action: $1"
+		logger "Internet-Monitor Action: Event Date/time: $2"
+		[ "$1" == "online" ] && logger "Internet-Monitor Action: Duration: $dmsg"
+	    else
+		echo "Internet-Monitor Action: $1"
+		echo "Internet-Monitor Action: Event Date/Time: $2"
+		[ "$1" == "online" ] && echo "Internet-Monitor Action: Duration: $dmsg"
+	    fi
+	fi
+	;;
+    ping)
+	# Replace these lines as needed
+	echo "arguments: 'ping' datetime pingmin pingavg pingmax pingmdev loss msec"
+	echo "$1 $2 $3 $4 $5 $6 $7 $8"
+	;;
+    update)
+	# Do whatever you need to do to react to External IP Address change
+	echo "New IP Address: $2"
+	echo "Old IP Address: $1"
+	;;
+    noupdate)
+	echo "Unable to update External IP Address"
+	;;
+    *)  echo "%% internet-monitor service Action Script ($0) unknown argument: $1"
+	;;
+esac
+
+
