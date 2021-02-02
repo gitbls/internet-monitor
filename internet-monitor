@@ -186,7 +186,6 @@ function getextip() {
 
 function checkextip() {
     local newextip=$(getextip)
-    echo "got $newextip from getextip"
     if [ "$newextip" == "" ]
     then
 	logmsg "$(fmtcdate)" "%% Unable to obtain External IP Address"
@@ -203,7 +202,7 @@ function checkextip() {
 #
 # Main
 #
-version="X0.94"
+version="X0.95"
 cdtfmt="+%Y-%m-%dT%H:%M:%S"  # Canonical date format for manipulation
 dtfmt="+%Y-%m-%d %H:%M:%S"   # Date format for stdout output
 dttw=10                      # Sleep time in seconds if network online
