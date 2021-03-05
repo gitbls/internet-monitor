@@ -193,7 +193,7 @@ function checkextip() {
     fi
     if [ "$newextip" != "" -a "$newextip" != "$myextip" ]
     then
-	logmsg "$(fmtcdate)" "External IP Address changed from myextip to $newextip"
+	logmsg "$(fmtcdate)" "External IP Address changed from $myextip to $newextip"
 	$actscript "update" $newextip $myextip
 	myextip=$newextip
     fi
@@ -202,7 +202,7 @@ function checkextip() {
 #
 # Main
 #
-version="X0.95"
+version="X0.96"
 cdtfmt="+%Y-%m-%dT%H:%M:%S"  # Canonical date format for manipulation
 dtfmt="+%Y-%m-%d %H:%M:%S"   # Date format for stdout output
 dttw=10                      # Sleep time in seconds if network online
