@@ -177,10 +177,11 @@ function getextip() {
 # Add other methods like this
 #	elif [ "$getop" == "[foo]" ]
 #	then
-#	    echo "fooperation"
+#           extip=$(command to get IP address)
+#	    [ "$extip" != "" ] && echo "$extip" && return
 	fi
     done
-    echo ""
+    echo "unknown"
     return
 }
 
