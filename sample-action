@@ -8,9 +8,12 @@
 # $1: start|online|offline|ping|update
 #
 # If $1="start|online|offline" arguments are:
-#   $2: event date/time in canonical format
-#   $3: 0: Log to syslog, or 1: Log to stdout
-#   $4: Outage duration in format "days:hours:minutes:seconds"
+#    $2: event date/time in canonical format
+#    $3: 0: Log to syslog, or 1: Log to stdout
+#    $4: Outage duration in format "days:hours:minutes:seconds"
+# This script will echo a return status (only checked for "offline" at the moment)
+#    0: (or "") Print the status change in internet-monitor and mark offline
+#    1: Do not print the status change in internet-monitor and do not mark offline
 #
 # If $1="ping" arguments $2-$8 are:
 #   datetime pingmin pingavg pingmax pingmdev loss msec (direct from the ping command)
@@ -21,7 +24,19 @@
 
 
 case "${1,,}" in
-    start|online|offline) 
+    offline)
+	while read line
+	do
+	    if [[ "$line" =~ "authoritative" ]]
+	    then
+		echo "1"
+		exit
+	    fi
+	done < <(nslookup reliablenameforyou.com - your-dns-server.com) # ** Edit these as appropriate for your ISP
+	echo "0"
+	exit
+	;;
+    start|online) 
 	syslog=$3
 	if [ "$4" != "" ]
 	then

@@ -1,5 +1,7 @@
 #!/bin/bash
 #
+# V1.6
+#
 # Monitors internet connectivity
 # Logs internet up and down events, and reports outage duration
 #
@@ -147,20 +149,29 @@ function reportoffline() {
     # $1: "starting " or ""
     #
     dateoff=$(getcdate)
-    logmsg "$(fmtdate $dateoff)"  "Monitored Internet IP $xip ${1}offline"
-    [ -n "$actscript" ] && $actscript offline "$dateoff" $syslog
-    ckmonitoredips "${pinglist[*]}" "$1" 1
-    pstate=1 ; curttw=1
+    printmsg="0"
+    if [ -n "$actscript" ]
+    then
+	printmsg="$($actscript offline "$dateoff" $syslog)"
+    fi
+    if [ "$printmsg" != "1" ]
+    then
+	logmsg "$(fmtdate $dateoff)"  "Monitored Internet IP $xip ${1}offline"
+	ckmonitoredips "${pinglist[*]}" "$1" 1
+	pstate=1
+	curttw=1
+    fi
 }
 
 function getextip() {
     local extip providers=( 
+	"icanhazip.com/" \
+	"ifconfig.co/" \
 	"whatismyip.akamai.com/" \
 	"dynupdate.no-ip.com/ip.php" \
 	"ident.me/" \
 	"l2.io/ip" \
 	"bot.whatismyipaddress.com/" \
-	"icanhazip.com/" \
 	"ifconfig.me/" \
 	"wgetip.com/" \
 	"zzipinfo.io/ip[curl]" \

@@ -26,7 +26,7 @@ internet-monitor takes several switches:
 
 * `--action /full/path/to/script` &mdash; Provides an action script to be called on internet connectivity state transitions. See Action Script below.
 * `--datefmt str` &mdash; Sets the date format string for output to stdout. The default is "+%Y-%m-%d %H:%M:%S". The plus sign is required. This is ignored if logging to syslog.
-* `--ddns /full/path/to/script` &mdash; Action script to call when External IP Address changes
+* `--ddns&mdash; Check external IP address every --internval X --einterval seconds. If external IP address changes, call the action script 
 * `--einterval N` &mdash; Number of --interval waits between External IP Address check if --ddns specified. The default is 60.
 * `--internet IP` &mdash; Sets the internet IP address to ping. The default is 1.1.1.1
 * `--interval seconds` &mdash; Sets the number of seconds between internet IP ping checks. The default is 10 seconds.
@@ -42,7 +42,7 @@ internet-monitor takes several switches:
 If `--action /full/path/to/script` is provided on the command line, internet-monitor will call the script in the following instances. In each case, the syslog argument will be 0 to write to syslog, 1 to write to stdout.
 
 * **On startup** &mdash; Arguments provided are: "start" "date/time (canonical format)" syslog. 
-* **Internet goes offline** &mdash; Arguments are: "offline" "date/time (canonical format)" syslog. 
+* **Internet goes offline** &mdash; Arguments are: "offline" "date/time (canonical format)" syslog. A return of "1" from the Action Script indicates that the internet is not really offline. A return of "0" or "" indicates that the internet is offline. See the Sample Action script for details.
 * **Internet goes online** &mdash; Arguments are: "online" "date/time (canonical format)" syslog offline-duration. offline-duration is in the format "days:hours:minutes:seconds"
 * **Ping test result**  &mdash;  Arguments are: "ping" datetime pingmin pingavg pingmax pingmdev loss msec
 
