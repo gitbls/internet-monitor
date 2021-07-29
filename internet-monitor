@@ -219,6 +219,7 @@ cdtfmt="+%Y-%m-%dT%H:%M:%S"  # Canonical date format for manipulation
 dtfmt="+%Y-%m-%d %H:%M:%S"   # Date format for stdout output
 dttw=10                      # Sleep time in seconds if network online
 edttw=60                     # Sleep time intervals between external IP address checks [10 minutes]
+curttw=$dttw
 syslog=1                     # 1=log to stdout, 0=log to syslog
 iplist=""                    # List of additional IP addresses to monitor
 pingwait=1                   # Time to wait for a ping response
