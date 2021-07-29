@@ -24,7 +24,7 @@ internet-monitor can be run from a terminal with logging to stdout. It is best r
 
 internet-monitor takes several switches:
 
-* `--action /full/path/to/script` &mdash; Provides an action script to be called on internet connectivity state transitions. See Action Script below.
+* `--action /full/path/to/script` &mdash; Provides an action script to be called on internet connectivity state transitions. See *Action Scripts* below.
 * `--datefmt str` &mdash; Sets the date format string for output to stdout. The default is "+%Y-%m-%d %H:%M:%S". The plus sign is required. This is ignored if logging to syslog.
 * `--ddns&mdash; Check external IP address every --internval X --einterval seconds. If external IP address changes, call the action script 
 * `--einterval N` &mdash; Number of --interval waits between External IP Address check if --ddns specified. The default is 60.
