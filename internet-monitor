@@ -230,6 +230,7 @@ myextip=$(getextip)          # Prime the pump
 noping=0                     # 0=also ping. 1=external IP monitor only
 pingcount=0
 pingct=""
+pstate=1
 
 script=$(basename $0)
 cmdline="$0 $*"
