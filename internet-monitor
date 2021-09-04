@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# V1.6
+# V1.7
 #
 # Monitors internet connectivity
 # Logs internet up and down events, and reports outage duration
@@ -224,17 +224,19 @@ syslog=1                     # 1=log to stdout, 0=log to syslog
 iplist=""                    # List of additional IP addresses to monitor
 pingwait=1                   # Time to wait for a ping response
 xip="1.1.1.1"                # Default Internet IP to ping
+xstandby=""                  # --standby IP to also monitor
 ddns=0                       # 1=Do External IP Address change checking
 actscript=""                 # Action script 
 myextip=$(getextip)          # Prime the pump
 noping=0                     # 0=also ping. 1=external IP monitor only
 pingcount=0
 pingct=""
-pstate=1
+pstate=1                     # External IP initial state
+spstate=1                    # Hot standby initial state
 
 script=$(basename $0)
 cmdline="$0 $*"
-OARGS=$(getopt -o h --longoptions help,action:,datefmt:,ddns,einterval:,internet:,interval:,noping,ping:,pingcount:,syslog -n $script -- "$@")
+OARGS=$(getopt -o h --longoptions help,action:,datefmt:,ddns,einterval:,internet:,interval:,noping,ping:,pingcount:,standby:,syslog -n $script -- "$@")
 [ $? != 0 ] && echo "? ${script}: Command parse failed" && exit 1
 eval set -- "$OARGS"
 
@@ -252,6 +254,7 @@ do
 	--ping)        iplist=$2     ; shift 2 ;;
 	--pingcount)   pingct=$2     ; shift 2 ;;
 	--pingwait)    pingwait=$2   ; shift 2 ;;
+	--standby)     xstandby="$2" ; shift 2 ;;
 	--syslog)      syslog=0      ; shift ;;
 	--)            shift ; break ;;
 	-h|--help)     echo "$script $version" ;
@@ -272,6 +275,7 @@ Switches
                       or @file for a list of additional IPs to check
  --pingcount n       Do a ping test to --internet IP every --interval seconds
  --pingwait seconds  Wait this many seconds for ping response [1]
+ --standby ip        A second IP to monitor for hot standby usage
  --syslog            Log output to syslog instead of stdout
 
 Action script arguments
@@ -304,11 +308,12 @@ tmp=$(($dttw))
 [ $tmp -eq 0 ] && errexit "? Interval '$dttw' is incorrect"
 [ -n "$actscript" ] && [ ! -x $actscript ] && errexit "? Action script '$actscript' not found or not executable"
 [ $ddns -eq 1 -a -z "$actscript" ] && errexit "? --ddns requires --action"
+[ "$xstandby" != "" -a -z "$actscript" ] && errexit "? --standby requires --action"
 if [ -n "$pingct" ]
 then
     pingcount=$(($pingct))
     [ $pingcount -eq 0 ] && errexit "? Ping count '$pingct' is incorrect"
-    [ -z "$actscript" ] && errexit "? --pingcount requires --action"
+    [ -z $actscript ] && errexit "? --pingcount requires --action"
 fi
 ips="$(getiplist $iplist)"
 pinglist=()
@@ -393,6 +398,23 @@ else
 	    el=$((el+1))
 	else
 	    [ $pstate -eq 0 ] && reportoffline ""
+	fi
+	if [ "$xstandby" != "" ]
+	then
+	    if online $xstandby
+	    then
+		if [ $spstate -eq 1 ]
+		then
+		    $actscript standby-online "$(getcdate)" $xstandby
+		    spstate=0
+		fi
+	    else
+		if [ $spstate -eq 0 ]
+		then
+		    $actscript standby-offline "$(getcdate)" $xstandby
+		    spstate=1
+		fi
+	    fi
 	fi
 	sleep $curttw
     done

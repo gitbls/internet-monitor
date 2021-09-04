@@ -34,6 +34,7 @@ internet-monitor takes several switches:
 * `--ping IP` &mdash; Sets an additional list of IP addresses to ping. The default is "". See Usage Hints below.
 * `--pingwait seconds` &mdash; Sets the number of seconds to wait for a response to a ping. The default is 1 second.
 * `--pingcount N` &mdash; Specify that ping testing with a ping count of N should be done against the Internet IP Address.
+* `--standby IP` &mdash; Secondary IP to monitor. Calls action script when it goes up or down
 * `--syslog` &mdash; By default internet-monitor writes to stdout. `--syslog` redirects the output to the system log.
 * `--version` &mdash; Prints the internet-monitor version information and exits.
 
@@ -45,6 +46,8 @@ If `--action /full/path/to/script` is provided on the command line, internet-mon
 * **Internet goes offline** &mdash; Arguments are: "offline" "date/time (canonical format)" syslog. A return of "1" from the Action Script indicates that the internet is not really offline. A return of "0" or "" indicates that the internet is offline. See the Sample Action script for details.
 * **Internet goes online** &mdash; Arguments are: "online" "date/time (canonical format)" syslog offline-duration. offline-duration is in the format "days:hours:minutes:seconds"
 * **Ping test result**  &mdash;  Arguments are: "ping" datetime pingmin pingavg pingmax pingmdev loss msec
+* **Standby IP goes offline** &mdash; Arguments are: "standby-offline" "date/time (canonical format)" standby-IP
+* **Standby IP goes online** &mdash; Arguments are: "standby-online" "date/time (canonical format)" standby-IP
 
 See the sample action script on this github for further information.
 

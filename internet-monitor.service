@@ -12,6 +12,7 @@ Requires=network-online.target
 # --pingcount N                         Also do a ping test with N pings (see doc)
 # --ddns                                Monitor External IP address for changes
 # --action /full/path/to/action/script  Script to run for internet state changes/external IP changes/ping results
+# --standby IP                          Secondary IP to check and action on for warm standby solutions
 # --syslog                              Log to syslog
 #
 ExecStart=/usr/local/bin/internet-monitor --syslog --interval 10 --internet 1.1.1.1

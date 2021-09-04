@@ -11,9 +11,13 @@
 #    $2: event date/time in canonical format
 #    $3: 0: Log to syslog, or 1: Log to stdout
 #    $4: Outage duration in format "days:hours:minutes:seconds"
-# This script will echo a return status (only checked for "offline" at the moment)
+# This script will echo a return status (only checked in internet-monitor for "offline" case at the moment)
 #    0: (or "") Print the status change in internet-monitor and mark offline
 #    1: Do not print the status change in internet-monitor and do not mark offline
+#
+# if $1="standby-online|standby-offline" arguments are:
+#    $2: event date/time in canonical format
+#    $3: monitored standby IP address
 #
 # If $1="ping" arguments $2-$8 are:
 #   datetime pingmin pingavg pingmax pingmdev loss msec (direct from the ping command)
@@ -57,6 +61,19 @@ case "${1,,}" in
 		[ "$1" == "online" ] && echo "Internet-Monitor Action: Duration: $dmsg"
 	    fi
 	fi
+	if [ "${1,,}" == "start" ]
+	then
+	    #echo "Placeholder for Internet Monitor action script startup code"
+	    fake=0 # Replace these 2 lines with your startup code as needed
+	fi
+	;;
+    standby-online)
+	logger "Standby-up is for use in implementing warm standby solutions"
+	logger "This call reports that the standby IP is up"
+	;;
+    standby-offline)
+	logger "Standby-up is for use in implementing warm standby solutions"
+	logger "This call reports that the standby IP is down"
 	;;
     ping)
 	# Replace these lines as needed
