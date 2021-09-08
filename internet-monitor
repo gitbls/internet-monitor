@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# V1.7
+# V1.8
 #
 # Monitors internet connectivity
 # Logs internet up and down events, and reports outage duration
@@ -214,7 +214,7 @@ function checkextip() {
 #
 # Main
 #
-version="X0.96"
+version="V1.8"
 cdtfmt="+%Y-%m-%dT%H:%M:%S"  # Canonical date format for manipulation
 dtfmt="+%Y-%m-%d %H:%M:%S"   # Date format for stdout output
 dttw=10                      # Sleep time in seconds if network online
@@ -329,13 +329,13 @@ msg="Monitoring Internet IP $xip"
 logmsg "$(fmtcdate)" "$msg"
 [ "$myextip" != "" ] && msg="External IP Address $myextip" || msg="%% Unable to obtain initial external IP address...continuing"
 logmsg "$(fmtcdate)" "$msg"
+logmsg "$(fmtcdate)" "Action script: $actscript"
 [ -n "$actscript" ]  && $actscript start $(getcdate) $syslog
 if [ $ddns -eq 1 ]
 then
     ewait=$((dttw*edttw))
     logmsg "$(fmtcdate)" "External IP check every $ewait seconds"
 fi
-logmsg "$(fmtcdate)" "Action script: $actscript"
 online $xip && reportonline || reportoffline "starting "   # Also sets pstate and curttw appropriately
 #
 # Loop forever monitoring internet connectivity
