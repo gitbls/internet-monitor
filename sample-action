@@ -1,23 +1,147 @@
 #!/bin/bash
 #
+# See details at end of this script
+#
+
+imalog() {
+    # $1: String to output to syslog
+    logger "Internet-Monitor Action: $1"
+}
+read_config() {
+    [ -f /etc/default/internet-monitor ] && source /etc/default/internet-monitor
+}
+maxstrlen() {
+    # $1="list of words"
+    # returns length of longest word
+    local maxlen=0
+    for s in $1
+    do
+        [ ${#s} -gt $maxlen ] && maxlen=${#s}
+    done
+    echo $maxlen
+}
+function checkdns() {
+    # $1: DNS name to check
+    # $2: DNS server to check on
+    # Returns true (0) if DNS check succeeds, otherwise false (1)
+    local digrx
+    if [ -n "$1" -a -n "$2" ]
+    then
+	# switches: ipv4, just return IP address
+	digrx=$(dig -4 +short @$2 $1)
+	# Lookup fails if no result or gets ";; connection timed out; no servers could be reached"
+	[ "$digrx" != "" ] && [[ ! "$digrx" =~ "connection" ]] && return 0 || return 1
+    fi
+    return 1
+}    
+_main() {
+    case "${1,,}" in
+	start)
+	    read_config
+	    imalog "Internet Monitor Settings from /etc/default/internet-monitor:"
+	    allsettings="primary_dns_server primary_dns_lookup"
+	    maxlen=$(maxstrlen "$allsettings")
+	    for s in $allsettings
+	    do
+		imalog "  $(printf "%-${maxlen}s  %s" "$s" "${!s}")"
+	    done
+	    ;;
+	offline)
+	    read_config
+	    result="offline"
+	    if [ "$primary_dns_lookup" != "" -a "$primary_dns_server" != "" ]
+	    then
+		if checkdns $primary_dns_lookup $primary_dns_server
+		then
+		    result="online"
+		    imalog "Offline refuted by DNS query of $primary_dns_lookup on DNS server $primary_dns_server"
+		fi
+	    fi
+	    echo $result
+	    exit
+	    ;;
+	online) 
+	    syslog=$3
+	    if [ "$4" != "" ]
+	    then
+		IFS=":" read -r -a edate <<<$4
+		days=${edate[0]}
+		hours=${edate[1]}
+		minutes=${edate[2]}
+		seconds=${edate[3]}
+		dmsg="$days days $hours hours $minutes minutes $seconds seconds"
+		if [ $syslog -eq 0 ]
+		then
+		    imalog "$1"
+		    imalog "Event Date/time: $2"
+		    [ "$1" == "online" ] && imalog "Duration: $dmsg"
+		else
+		    echo "Internet-Monitor Action: $1"
+		    echo "Internet-Monitor Action: Event Date/Time: $2"
+		    [ "$1" == "online" ] && echo "Internet-Monitor Action: Duration: $dmsg"
+		fi
+	    fi
+	    ;;
+	standby-online)
+	    imalog "Standby-up is for use in implementing network standby solutions"
+	    imalog "This call reports that the standby IP is up"
+	    ;;
+	standby-offline)
+	    imalog "Standby-up is for use in implementing network standby solutions"
+	    imalog "This call reports that the standby IP is down"
+	    ;;
+	ping)
+	    # Replace these lines as needed
+	    echo "arguments: 'ping' datetime pingmin pingavg pingmax pingmdev loss msec"
+	    echo "$1 $2 $3 $4 $5 $6 $7 $8"
+	    ;;
+	update)
+	    # Do whatever is needed to react to External IP Address change
+	    # If the file /usr/local/bin/$(hostname)-ip-update exists and is executable, it will be run
+	    localipupdate="/usr/local/bin/$(hostname)-ip-update"
+	    if [ -x $localipupdate ]
+	    then
+		$localipupdate $2 $1
+	    else
+		[ -e $localipupdate ] && imalog "%% File $localipupdate is not executable"
+		imalog "New IP Address: $2"
+		imalog "Old IP Address: $1"
+	    fi
+	    return
+	    ;;
+	noupdate)
+	    echo "Unable to update External IP Address"
+	    ;;
+	*)  echo "%% internet-monitor service Action Script ($0) unknown argument: $1"
+	    ;;
+    esac
+}
+
+_main "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8"
+exit 0
+
 # Example internet-monitor Action script
 # Called when internet-monitor starts up or detects a network state transition
 #
 # Arguments:
 #
-# $1: start|online|offline|ping|update
+# $1: start|online|offline|ping|update|standby_online|standby_offline
 #
 # If $1="start|online|offline" arguments are:
 #    $2: event date/time in canonical format
-#    $3: 0: Log to syslog, or 1: Log to stdout
+#    $3: 0: Log to syslog, or 1: Log to stdout (unused)
 #    $4: Outage duration in format "days:hours:minutes:seconds"
-# This script will echo a return status (only checked in internet-monitor for "offline" case at the moment)
-#    0: (or "") Print the status change in internet-monitor and mark offline
-#    1: Do not print the status change in internet-monitor and do not mark offline
+#    $5: external IP
+#    $6: standby IP or ""
+# This script will echo a return status (only checked in internet-monitor for "offline" and "standby_offline cases at the moment)
+#    "offlineprint": (or "") Print the status change in internet-monitor and mark offline
+#    "offline": Do not print the status change but mark offline
+#    "online": Do not print the status change in internet-monitor and do not mark offline
 #
 # if $1="standby-online|standby-offline" arguments are:
 #    $2: event date/time in canonical format
 #    $3: monitored standby IP address
+#    NOTE: Standby operations not implemented in this script. See failover-monitor-action.
 #
 # If $1="ping" arguments $2-$8 are:
 #   datetime pingmin pingavg pingmax pingmdev loss msec (direct from the ping command)
@@ -25,71 +149,11 @@
 # If $1="update" arguments are:
 #   $2: new-external-IP-address
 #   $3: old-external-ip-address
-
-
-case "${1,,}" in
-    offline)
-	while read line
-	do
-	    if [[ "$line" =~ "authoritative" ]]
-	    then
-		echo "1"
-		exit
-	    fi
-	done < <(nslookup reliablenameforyou.com - your-dns-server.com) # ** Edit these as appropriate for your ISP
-	echo "0"
-	exit
-	;;
-    start|online) 
-	syslog=$3
-	if [ "$4" != "" ]
-	then
-	    IFS=":" read -r -a edate <<<$4
-	    days=${edate[0]}
-	    hours=${edate[1]}
-	    minutes=${edate[2]}
-	    seconds=${edate[3]}
-	    dmsg="$days days $hours hours $minutes minutes $seconds seconds"
-	    if [ $syslog -eq 0 ]
-	    then
-		logger "Internet-Monitor Action: $1"
-		logger "Internet-Monitor Action: Event Date/time: $2"
-		[ "$1" == "online" ] && logger "Internet-Monitor Action: Duration: $dmsg"
-	    else
-		echo "Internet-Monitor Action: $1"
-		echo "Internet-Monitor Action: Event Date/Time: $2"
-		[ "$1" == "online" ] && echo "Internet-Monitor Action: Duration: $dmsg"
-	    fi
-	fi
-	if [ "${1,,}" == "start" ]
-	then
-	    #echo "Placeholder for Internet Monitor action script startup code"
-	    fake=0 # Replace these 2 lines with your startup code as needed
-	fi
-	;;
-    standby-online)
-	logger "Standby-up is for use in implementing warm standby solutions"
-	logger "This call reports that the standby IP is up"
-	;;
-    standby-offline)
-	logger "Standby-up is for use in implementing warm standby solutions"
-	logger "This call reports that the standby IP is down"
-	;;
-    ping)
-	# Replace these lines as needed
-	echo "arguments: 'ping' datetime pingmin pingavg pingmax pingmdev loss msec"
-	echo "$1 $2 $3 $4 $5 $6 $7 $8"
-	;;
-    update)
-	# Do whatever you need to do to react to External IP Address change
-	echo "New IP Address: $2"
-	echo "Old IP Address: $1"
-	;;
-    noupdate)
-	echo "Unable to update External IP Address"
-	;;
-    *)  echo "%% internet-monitor service Action Script ($0) unknown argument: $1"
-	;;
-esac
-
-
+#
+# To configure DNS refutation:
+#
+# /etc/default/internet-monitor config controls actions of this script. 
+# Content example with descriptions, which can be in the file since it's sourced by bash:
+#
+#    primary_dns_server=           # DNS Server IP to use for DNS lookups on primary network
+#    primary_dns_lookup=           # FQDN DNS name to look up on primary DNS server

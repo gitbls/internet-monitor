@@ -48,10 +48,26 @@ If `--action /full/path/to/script` is provided on the command line, internet-mon
 * **Ping test result**  &mdash;  Arguments are: "ping" datetime pingmin pingavg pingmax pingmdev loss msec
 * **Standby IP goes offline** &mdash; Arguments are: "standby-offline" "date/time (canonical format)" standby-IP
 * **Standby IP goes online** &mdash; Arguments are: "standby-online" "date/time (canonical format)" standby-IP
+* **External IP adddress changes** &mdash; Arguments are: "new-external-ip" "old-external-ip". This will only be called if `--ddns` is specified on the internet-monitor command line.
 
-See the sample action script on this github for further information.
+See the sample action scripts [sample-action](https://github.com/gitbls/internet-monitor/blob/master/sample-action) and [failover-monitor-action](https://github.com/gitbls/internet-monitor/blob/master/failover-monitor-action) on this github for further information.
 
-If `--ddns` is specified internet-monitor will also monitor your External IP Address for changes. When it changes, internet-monitor will call the action script with the arguments: update new-external-ip old-external-ip
+## Network Failover Monitor
+
+The failover-monitor-action script is a working example of using internet-monitor to ensure that one of two WAN networks is always online. This is useful, for instance, if you have a faster, or otherwise more preferred primary connection, and a slower, or less preferred secondary connection, although that's not the only use case for it.
+
+failover-monitor-action can either prefer the primary network or just ensure that one network is online and routing traffic.
+
+Briefly, to configure the failover monitor:
+
+* Install internet-monitor per the installation and configuration guide above
+* Copy failover-monitor-action to /usr/local/bin
+* `sudo systemctl stop internet-monitor`
+* Edit /etc/systemd/system/internet-monitor.service and add --standby ip:ad:dd:re:ss and add the --action switch with the full path to the failover-monitor-action script
+* Download the sample internet-monitor.defaults from this github to /etc/default/internet-monitor, and edit it to reflect your configuration
+* `sudo systemctl start internet-monitor`, check the logs, and correct any issues found
+* `sudo systemctl enable internet-monitor` to enable it to start automatically when the system reboots
+
 
 ## Usage Hints
 

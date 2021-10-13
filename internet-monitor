@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# V1.8
+# V1.9
 #
 # Monitors internet connectivity
 # Logs internet up and down events, and reports outage duration
@@ -136,10 +136,23 @@ function reportonline() {
     # Report Internet IP status as online and test monitored IPs
     #
     dateon=$(getcdate)
-    logmsg "$(fmtdate $dateon)" "Monitored Internet IP $xip online"
-    [ -n "$actscript" ] && $actscript online "$dateon" $syslog
-    ckmonitoredips "${pinglist[*]}" "" 0
-    pstate=0 ; curttw=$dttw
+    printmsg="onlineprint"
+    [ -n "$actscript" ] && printmsg=$($actscript online "$dateon" $syslog "$ddiff")
+    case "${printmsg,,}" in
+	online*)
+	    if [ "${printmsg,,}" == "onlineprint" ]
+	    then
+	       logmsg "$(fmtdate $dateon)" "Monitored Internet IP $xip online"
+	       [ "$dateoff" != "" ] && ddiff=$(datediff $dateoff $dateon) || ddiff=""
+	       IFS=":" read -r -a edate <<<$ddiff
+	       [ "$ddiff" != "" ] && logmsg "$(fmtcdate)" "Outage Duration: ${edate[0]} days ${edate[1]} hours ${edate[2]} minutes ${edate[3]} seconds"
+	    fi
+	    ckmonitoredips "${pinglist[*]}" "" 0
+	    pstate=0 ; curttw=$dttw
+	    ;;
+	*)
+	    ;;
+	esac
 }
 
 function reportoffline() {
@@ -149,33 +162,33 @@ function reportoffline() {
     # $1: "starting " or ""
     #
     dateoff=$(getcdate)
-    printmsg="0"
-    if [ -n "$actscript" ]
-    then
-	printmsg="$($actscript offline "$dateoff" $syslog)"
-    fi
-    if [ "$printmsg" != "1" ]
-    then
-	logmsg "$(fmtdate $dateoff)"  "Monitored Internet IP $xip ${1}offline"
-	ckmonitoredips "${pinglist[*]}" "$1" 1
-	pstate=1
-	curttw=1
-    fi
+    printmsg="offlineprint"
+    [ -n "$actscript" ] && printmsg=$($actscript offline "$dateoff" $syslog)
+    case "${printmsg,,}" in
+	offline*)
+	    ckmonitoredips "${pinglist[*]}" "$1" 1
+	    pstate=1 ; curttw=1
+	    [ "${printmsg,,}" == "offlineprint" ] && logmsg "$(fmtdate $dateoff)"  "Monitored Internet IP $xip ${1}offline"
+	    ;;
+	*)
+	    ;;
+    esac
 }
 
 function getextip() {
     local extip providers=( 
-	"icanhazip.com/" \
 	"ifconfig.co/" \
 	"whatismyip.akamai.com/" \
 	"dynupdate.no-ip.com/ip.php" \
-	"ident.me/" \
-	"l2.io/ip" \
-	"bot.whatismyipaddress.com/" \
-	"ifconfig.me/" \
-	"wgetip.com/" \
-	"zzipinfo.io/ip[curl]" \
 	)
+#	"icanhazip.com/" 
+#	"ident.me/" 
+#	"l2.io/ip" 
+#	"bot.whatismyipaddress.com/" 
+#	"ifconfig.me/" 
+#	"wgetip.com/" 
+#	"zzipinfo.io/ip[curl]" 
+
     for purl in ${providers[@]}
     do
 	url="${purl%%\[*\]}"
@@ -211,10 +224,28 @@ function checkextip() {
     fi
 }
 
+checkactioncomm() {
+    local cmd
+    resetf="/tmp/internet-monitor-cmd"
+    [ -f $resetf ] && cmd=$(cat $resetf | (read a ; echo $a)) || return
+    case "$cmd" in
+	reset)
+	    logmsg "$(fmtcdate)" "%% Reset Monitored and Standby Network Status"
+	    pstate=1
+	    spstate=1
+	    ;;
+	dump)
+	    logmsg "$(fmtcdate)" "%% pstate: $pstate  spstate: $spstate"
+	    ;;
+	*)
+	    ;;
+    esac   
+    rm  -f $resetf
+}
 #
 # Main
 #
-version="V1.8"
+version="V1.9"
 cdtfmt="+%Y-%m-%dT%H:%M:%S"  # Canonical date format for manipulation
 dtfmt="+%Y-%m-%d %H:%M:%S"   # Date format for stdout output
 dttw=10                      # Sleep time in seconds if network online
@@ -228,6 +259,7 @@ xstandby=""                  # --standby IP to also monitor
 ddns=0                       # 1=Do External IP Address change checking
 actscript=""                 # Action script 
 myextip=$(getextip)          # Prime the pump
+#myextip=""
 noping=0                     # 0=also ping. 1=external IP monitor only
 pingcount=0
 pingct=""
@@ -330,6 +362,7 @@ logmsg "$(fmtcdate)" "$msg"
 [ "$myextip" != "" ] && msg="External IP Address $myextip" || msg="%% Unable to obtain initial external IP address...continuing"
 logmsg "$(fmtcdate)" "$msg"
 logmsg "$(fmtcdate)" "Action script: $actscript"
+rm -f /tmp/internet-monitor-cmd
 [ -n "$actscript" ]  && $actscript start $(getcdate) $syslog
 if [ $ddns -eq 1 ]
 then
@@ -357,16 +390,11 @@ else
     el=0
     while [ 1 ]
     do
+	checkactioncomm
 	if online $xip
 	then
-	    if [ $pstate -eq 1 ]   # pstate=1 if previous state offline, report the change
-	    then
-		reportonline
-		ddiff=$(datediff $dateoff $dateon)
-		[ -n "$actscript" ] && $actscript online "$dateon" $syslog "$ddiff"
-		IFS=":" read -r -a edate <<<$ddiff
-		logmsg "$(fmtcdate)" "Outage Duration: ${edate[0]} days ${edate[1]} hours ${edate[2]} minutes ${edate[3]} seconds"
-	    fi
+	    # pstate=1 if previous state offline, report the change
+	    [ $pstate -eq 1 ] && reportonline
 	    if [ $pingcount -ne 0 ]
 	    then
 		#
@@ -405,14 +433,14 @@ else
 	    then
 		if [ $spstate -eq 1 ]
 		then
-		    $actscript standby-online "$(getcdate)" $xstandby
-		    spstate=0
+		    printmsg=$($actscript standby-online "$(getcdate)" $xstandby)
+		    [[ "$printmsg" =~ "online" ]] && spstate=0
 		fi
 	    else
 		if [ $spstate -eq 0 ]
 		then
-		    $actscript standby-offline "$(getcdate)" $xstandby
-		    spstate=1
+		    printmsg=$($actscript standby-offline "$(getcdate)" $xstandby)
+		    [[ "$printmsg" =~ "offline" ]] && spstate=1
 		fi
 	    fi
 	fi
