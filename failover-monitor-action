@@ -1,0 +1,535 @@
+#!/bin/bash
+#
+# internet-monitor Action script
+# Called when internet-monitor starts up or detects a network state transition
+#
+# See documentation at end of this script
+#
+debuglog() {
+    # $1: String to output to syslog
+    [ "$imdebug" == "yes" ] && logger "Internet-Monitor Action (debug): $1 "
+}	
+imalog() {
+    # $1: String to output to syslog
+    logger "Internet-Monitor Action: $1"
+}
+config_err() {
+    missing=""
+    # If failover_enabled != 0 in config, then nothing can be missing
+    # Otherwise check for missing variables that must be defined
+    [ "$failover_enabled" != "yes" ] && echo "" && return
+    for s in primary_if primary_gw standby_if standby_gw
+    do
+	[ "${!s}" == "" ] && missing="$missing $s"
+    done
+    echo "$missing"
+}
+read_config() {
+    [ -f /etc/default/internet-monitor ] && source /etc/default/internet-monitor
+}
+check_config() {
+    [ -n "$(config_err)" ] && failover_enabled="no" # Disable network failover if incomplete config
+}    
+maxstrlen() {
+    # $1="list of words"
+    # returns length of longest word
+    local maxlen=0
+    for s in $1
+    do
+        [ ${#s} -gt $maxlen ] && maxlen=${#s}
+    done
+    echo $maxlen
+}
+getipaddr() {
+    # $1 is the device name
+    ipline=$(ip -o -f inet addr show | grep $1)
+    echo $(awk '{print $4}' <<< $(echo "$ipline") | (IFS='/'; read a b; echo $a))
+    return
+}
+getsubnet() {
+    # $1 is the device name
+    # returns first 3 octets as subnet for the IP address
+    ipaddr=$(getipaddr $1)
+    echo "${ipaddr%.*}"  # Gets first 3 octets of ipv4
+    return
+}
+getroute() {
+    # $1 has device name
+    echo "$(ip route | grep $1 | grep default)"
+}
+on_network() {
+    # $1 has the device name (either $primary_if or $standby_if)
+    #
+    local route=$(getroute $1)
+    [ "$route" != "" ] && return 0 || return 1
+}
+route_add() {
+    # Add route
+    # $1: Gateway
+    # $2: Device name
+    # $3: Subnet
+    # Get my IP address associated with the subnet
+    ipaddr=$(getipaddr $2)
+    routename="default via $1 dev $2 src $ipaddr metric 202"
+    rexist=$(ip route | grep "$routename")
+    if [ "$rexist" == "" ]
+    then
+	imalog "Add    Route: $routename"
+	ip route add $routename
+    fi
+    imalog "Routes:"
+    imalog "$(printf "\n$(ip route)")"
+}
+route_delete() {
+    # Delete route
+    # $1: Gateway
+    # $2: Device name
+    # $3: Subnet
+    routename="$(getroute $2)"
+    routename=${routename%% linkdown*}
+    [ "$routename" != "" ] && imalog "Delete Route: $routename" && ip route delete $routename
+}
+route_delete2() {
+    route_delete "$1" "$2" "$3"
+    imalog "Routes:"
+    imalog "$(printf "\n$(ip route)")"
+}
+function online() {
+    #
+    # Test if IP address $1 is online via device $2
+    # $3 optional pingcount and $4 optional pingwait
+    # can be used to check "for sure"
+    # Returns 0 if online, 1 if offline
+    #
+    local pcnt=${pingcount-1} pwait=${pingwait-1}
+    [ "$3" != "" ] && pcnt=$3
+    [ "$4" != "" ] && pwait=$4
+    if (ping -c $pcnt -W $pwait -I $2 $1 > /dev/null 2>&1 )
+    then
+	return 0
+    else
+	return 1
+    fi
+}
+islinkup() {
+    # $1: interface name
+    # Returns true if link is up, false if down
+    # Not used atm
+    [[ "$(getroute $1)" =~ "linkdown" ]] && return 1 || return 0
+}
+mkflagfile() {
+    # $1 is the filename
+    # Created in /tmp/internet-monitor
+    #
+    mkdir -p /tmp/internet-monitor
+    touch /tmp/internet-monitor/$1
+}
+rmflagfile() {
+    # $1-$4 are the filenames
+    # Deleted from /tmp/internet-monitor
+    #
+    [ "$1" != "" ] && rm -f /tmp/internet-monitor/$1
+    [ "$2" != "" ] && rm -f /tmp/internet-monitor/$2
+    [ "$3" != "" ] && rm -f /tmp/internet-monitor/$3
+    [ "$4" != "" ] && rm -f /tmp/internet-monitor/$4
+}
+isflagfile() {
+    # $1 is the filename
+    # returns true if exists, else false
+    [ -f /tmp/internet-monitor/$1 ] && return 0 || return 1
+}
+failover_to_primary() {
+    #
+    # Returns true (0) if successful
+    #
+    if online $primary_gw $primary_if
+    then
+	routename="$(getroute $primary_if)"
+	if [ "$routename" == "" ] # || [[ "$routename" =~ "linkdown" ]] 
+	then
+	    imalog "Network Failover to Primary Network '$primary_gw' on '$primary_if'"
+	    route_delete $standby_gw $standby_if $(getsubnet $standby_if)
+	    route_add $primary_gw $primary_if $(getsubnet $primary_if)
+	    rmflagfile primary-failover-failed standby-failover-failed
+	    if [ "$primary_ping" != "" ]
+	    then
+		if online $primary_ping $primary_if
+		then
+		    imalog "Info: Primary Network Ping Target $primary_ping Online After Failover"
+		else
+		    imalog "Warn: Primary Network Ping Target $primary_ping Not Responding After Failover"
+		fi
+	    fi
+	    return 0
+	fi
+    else
+	! isflagfile primary-failover-failed && imalog "Network Failover to Primary Network Failed: Primary Network is Down"
+	mkflagfile primary-failover-failed
+	return 1
+    fi
+    return
+}
+failover_to_standby() {
+    #
+    # Returns true (0) if successful
+    #
+    if online $standby_gw $standby_if
+    then
+	routename="$(getroute $standby_if)"
+	if [ "$routename" == "" ] # && [[ ! "$routename" =~ "linkdown" ]]
+	then
+	    imalog "Network Failover to Standby Network '$standby_gw' on '$standby_if'"
+	    route_delete $primary_gw $primary_if $(getsubnet $primary_if)
+	    route_add $standby_gw $standby_if $(getsubnet $standby_if)
+	    rmflagfile primary-failover-failed standby-failover-failed
+	    if [ "$standby_ping" != "" ]
+	    then
+		if online $standby_ping $standby_if
+		then
+		    imalog "Info: Standby Network Ping Target $standby_ping Online After Failover"
+		else
+		    imalog "Warn: Standby Network Ping Target $standby_ping Not Responding After Failover"
+		fi
+	    fi
+	    return 0
+	fi
+    else
+	! isflagfile standby-failover-failed && imalog "Network Failover to Standby Network Failed: Standby Network is Down"
+	mkflagfile standby-failover-failed
+	return 1
+    fi
+    return
+}
+function checkdns() {
+    # $1: DNS name to check
+    # $2: DNS server to check on
+    # Returns true (0) if DNS check succeeds, otherwise false (1)
+    # Not used atm
+    local digrx
+    if [ -n "$1" -a -n "$2" ]
+    then
+	# switches: ipv4, just return IP address
+	digrx=$(dig -4 +short @$2 $1)
+	# Lookup fails if no result or gets ";; connection timed out; no servers could be reached"
+	[ "$digrx" != "" ] && [[ ! "$digrx" =~ "connection" ]] && return 0 || return 1
+    fi
+    return 1
+}    
+
+_main() {
+    read_config # Read config here to so we know if imadebug is set for logging 
+    debuglog "Arguments: $1 $2 $3 $4 $5 $6 $7 $8"
+    case "${1,,}" in
+	start)
+	    imalog "Start"
+	    missing="$(config_err)"
+	    if [ -n "$missing" ]
+	    then
+		imalog "%% One or more required definitions are missing from /etc/default/internet-monitor:"
+		imalog "%% $missing"
+		imalog "%% Refer to $0 for details"
+		imalog "%% These MUST be corrected to enable Network Failover"
+		failover_enabled="1"  # Disable network failover for this call. All other calls use check_config
+	    fi
+	    imalog "Internet Monitor Settings from /etc/default/internet-monitor:"
+	    allsettings="imdebug failover_enabled prefer_primary primary_if primary_gw primary_ping primary_delay \
+standby_if standby_gw standby_ping standby_delay primary_dns_server primary_dns_lookup standby_dns_server standby_dns_lookup"
+	    maxlen=$(maxstrlen "$allsettings")
+	    for s in $allsettings
+	    do
+		imalog "  $(printf "%-${maxlen}s  %s" "$s" "${!s}")"
+	    done
+	    if [ "$failover_enabled" == "yes" ]
+	    then
+		imalog "Initialize Network Failover Monitor"
+		rmflagfile primary-failover-failed standby-failover-failed primary-refuted
+		if [ -e /etc/systemd/network/99-default.link ]
+		then
+		    imalog "%% Predictable Network Names are not enabled, but MUST be for Network Failover to operate reliably"
+		    imalog "%% Set With: sudo /bin/raspi-config do_net_names 1 nonint ; sudo reboot"
+		fi   
+		online $primary_gw $primary_if && state="Online" || state="Offline"
+		imalog "Network Failover Initial Primary Gateway State: $state"
+		online $standby_gw $standby_if && state="Online" || state="Offline"
+		imalog "Network Failover Initial Standby Gateway State: $state"
+	    fi
+	    ;;
+	offline)
+	    check_config
+	    [ "$primary_delay" != "" ] && imalog "Primary offline check delayed $primary_delay seconds" && sleep $primary_delay
+	    online $primary_gw $primary_if && echo "online" && return   # Check again just to be sure
+	    if [ "$failover_enabled" == "yes" ]
+	    then
+		failover_to_standby
+		echo "offline" && return
+	    else
+		if checkdns "$primary_dns_lookup" "$primary_dns_server"
+		then
+                    isflagfile primary-refuted && echo "online" && return
+                    imalog "Offline refuted by DNS query of $primary_dns_lookup on DNS server $primary_dns_server adapter $primary_if"
+                    mkflagfile primary-refuted
+                    echo "online"
+                    return
+		fi
+            fi
+	    echo "offlineprint" && return   #Not doing failover, and primary offline. Tell internet-monitor to print
+	    ;;
+	online) 
+	    check_config
+	    if [ "$failover_enabled" != "yes" ]
+	    then
+		rmflagfile primary-refuted
+		if [ "$4" != "" ]
+		then
+		    IFS=":" read -r -a edate <<<$4
+		    days=${edate[0]}
+		    hours=${edate[1]}
+ 		    minutes=${edate[2]}
+		    seconds=${edate[3]}
+		    dmsg="$days days $hours hours $minutes minutes $seconds seconds"
+		    imalog "Online"
+		    imalog "Event Date/time: $2"
+		    imalog "Duration: $dmsg"
+		    echo "onlineprint"  && return                 # Print in internet-monitor in addition to above
+		fi
+	    elif [ "$prefer_primary" == "yes" ]
+	    then
+		if online $primary_gw $primary_if
+		then
+		    failover_to_primary
+		    echo "online" && return        # Tell internet-monitor that it's online
+		else
+		    echo "offline" && return       # Tell internet-monitor that it's offline
+		fi
+	    else
+		imalog "Network Failover Primary online in Standby mode"
+	    fi
+	    echo "onlineprint" && return    #Not doing failover, and primary online. Tell internet-monitor to print
+	    ;;
+	standby-online)
+	    check_config
+	    [ "$failover_enabled" != "yes" ] && return
+	    if ! online $primary_gw $primary_if
+	    then
+		if online $standby_gw $standby_if
+		then
+		    failover_to_standby
+		    echo "online" && return
+		else
+		    echo "offline" && return
+		fi
+	    else
+		imalog "Network Failover Standby online in Standby mode"
+		route_delete2 $standby_gw $standby_if $(getsubnet $standby_if)
+		echo "online" && return
+	    fi
+	    ;;
+	standby-offline)
+	    check_config
+	    [ "$failover_enabled" != "yes" ] && return
+	    [ "$standby_delay" != "" ] && imalog "Standby offline check delayed $standby_delay seconds" && sleep $standby_delay
+	    if ! online $standby_gw $standby_if
+	    then
+		imalog "Network Failover Standby Network offline"
+		failover_to_primary
+		echo "offline" && return
+	    fi
+	    ;;
+	set-primary-active)
+	    check_config
+            rmflagfile primary-refuted
+          [ "$failover_enabled" == "yes" ] && imalog "Start Manual Failover to Primary Network" && failover_to_primary
+	    return
+	    ;;
+	set-standby-active)
+	    check_config
+            [ "$failover_enabled" == "yes" ] && imalog "Start Manual Failover to Standby Network" && failover_to_standby
+	    return
+	    ;;
+	dump-network-status)
+	    check_config
+	    imalog "Ask internet-monitor to dump internal status"
+            rmflagfile primary-refuted
+	    rm -f /tmp/internet-monitor-cmd
+	    echo "dump" > /tmp/internet-monitor-cmd
+	    return
+	    ;;
+	reset-network-status)
+	    check_config
+	    [ "$failover_enabled" != "yes" ] && return
+	    imalog "Ask internet-monitor to reset Network Status"
+	    rm -f /tmp/internet-monitor-cmd
+	    echo "reset"> /tmp/internet-monitor-cmd
+	    return
+	    ;;
+	ping)
+	    # Replace these lines as needed
+	    imalog "arguments: 'ping' datetime pingmin pingavg pingmax pingmdev loss msec"
+	    imalog "$1 $2 $3 $4 $5 $6 $7 $8"
+	    return
+	    ;;
+	update)
+	    # Do whatever is needed to react to External IP Address change
+	    # If the file /usr/local/bin/$(hostname)-ip-update exists and is executable, it will be run
+	    localipupdate="/usr/local/bin/$(hostname)-ip-update"
+	    if [ -x $localipupdate ]
+	    then
+		$localipupdate $2 $1
+	    else
+		[ -e $localipupdate ] && imalog "%% File $localipupdate is not executable"
+		imalog "New IP Address: $2"
+		imalog "Old IP Address: $1"
+	    fi
+	    return
+	    ;;
+	noupdate)
+	    imalog "Unable to update External IP Address"
+	    return
+	    ;;
+	*)  imalog "%% internet-monitor service Action Script ($0) unknown argument: $1"
+	    return
+	    ;;
+    esac
+    return
+}
+
+_main "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8"
+exit 0
+
+# Arguments:
+#
+# $1: start|online|offline|ping|update|standby_online|standby_offline
+#
+# If $1="start|online|offline" arguments are:
+#    $2: event date/time in canonical format
+#    $3: 0: Log to syslog, or 1: Log to stdout (unused)
+#    $4: Outage duration in format "days:hours:minutes:seconds"
+#    $5: external IP
+#    $6: standby IP or ""
+# This script will echo a return status (only checked in internet-monitor for "offline" and "standby_offline cases at the moment)
+#    "offlineprint": (or "") Print the status change in internet-monitor and mark offline
+#    "offline": Do not print the status change but mark offline
+#    "online": Do not print the status change in internet-monitor and do not mark offline
+#
+# if $1="standby-online|standby-offline" arguments are:
+#    $2: event date/time in canonical format
+#    $3: monitored standby IP address
+#
+# If $1="ping" arguments $2-$8 are:
+#   datetime pingmin pingavg pingmax pingmdev loss msec (direct from the ping command)
+#
+# If $1="update" arguments are:
+#   $2: new-external-IP-address
+#   $3: old-external-ip-address
+#
+# /etc/default/internet-monitor config controls actions of this script. 
+# Content example with descriptions, which can be in the file since it's sourced by bash:
+#
+#    imdebug=no                    # yes=enable debug features (there aren't many)
+#    pingcount=1                   # Number of pings to do when testing (ping -c)
+#    pingwait=1                    # Timeout in seconds for ping to wait (ping -w)
+#    failover_enabled=no           # Network Failover enabled if yes
+#    prefer_primary=yes            # yes=Prefer primary over standby if both up
+#    primary_if=enxifname          # Primary network interface name
+#    primary_gw=ip.ad.dd.rs        # Primary network gateway
+#    primary_ping=ip.ad.dd.rs      # Use this IP for testing primary online after failover
+#    primary_delay=n               # Delay in seconds before 2nd check for offline (default=0)
+#    standby_if=enxifname          # Standby network interface name
+#    standby_gw=ip.ad.dd.rs        # Standby network gateway
+#    standby_ping=ip.ad.dd.rs      # Use this IP for testing standby online after failover
+#    standby_delay=n               # Delay in seconds before 2nd check for offline (default=0)
+#    primary_dns_server=           # DNS Server IP to use for DNS lookups on primary network
+#    primary_dns_lookup=           # FQDN DNS name to look up on primary DNS server
+#
+# * If this config file does not exist:
+#    * Network Failover is disabled
+#    * No DNS offline refute checking is done
+#    * Other defaults: pingcount=1, pingwait=1, debug mode disabled
+#
+# * /etc/default/internet-monitor is read on each call to this script, so if you want to change
+#   a setting, there's no need to restart internet-monitor.
+#
+# * Network Failover-specific notes
+#
+#   The notes here assume that eth0 is your LAN and your two failover networks are USB network devices (enx...)
+#   If for some reason eth0 is one of your failover networks, adjust the details as appropriate for your configuration
+#
+#   * Enable Network Failover with failover_enabled=yes
+#
+#   * Arguments required if failover_enabled=yes:
+#           primary_if, primary_gw, standby_if, standby_gw
+#
+#   * Enable predictable names for network interfaces to avoid potentially confusing issues.
+#     This script will check and log if it should be enabled but isn't. It will not, however, disable Network Failover.
+#     Failing to make this change can result in significant issues, since network device names can change across reboots
+#     or device removals/insertions. If the device names change, the failover network configuration
+#     defined in /etc/default/internet-monitor will be incorrect, resulting in unpredictable operation.
+#
+#   * Network Failover prefers the primary network if prefer_primary=yes. This means that
+#     if on the standby network because primary down, Network Failover will switch back to using the primary
+#     when it comes back online. If prefer_primary!=yes, this switch would not happen.
+#
+#   * Network failover transitions:
+#     primary online
+#       failover to primary if prefer_primary=yes
+#     primary offline
+#       failover to standby if standby online
+#     standby online
+#       failover to standby if primary offline
+#     standby offline
+#      failover to primary if primary online
+#
+#   * DNS Refute checking is not done. If the gateway goes down, the network is considered failed and failover is done.
+#
+#   Interoperability
+#
+#   * RasPiOS and dhcpcd: known working
+#   * RasPiOS and systemd-networkd: testing Not Yet tested
+#   * RasPiOS and networking.service (/etc/network/interfaces and friends): Not Yet Tested
+#   * non-RasPiOS: Not Tested, but since it uses standard mechanisms, it *should* work, modulo
+#     the networking configuration software
+#
+# RasPiOS Notes:
+# * Use dhcpcd5
+# * sudoedit /etc/dhcpcd.conf and add at the end of the file
+#
+#   interface enxyyzzaabb
+#        nogateway
+#   interface enxddeeffgg
+#        nogateway
+#   interface eth0
+#        nogateway
+#
+# The above tell dhcpcd to not automatically add default routes for the interfaces.
+# internet-monitor network failover adds and removes routes on the two devices that
+# it's managing. If eth0 also has a gateway to the internet then DNS checking won't work
+# and will totally disrupt offline checking unless the primary and standby IP addresses
+# that are being checked are ONLY available on their respective primary and secondary networks
+#
+# * Minimize avahi log spew. It's of no value in the failover scenario
+#   * Avahi will report the comings and goings of the failover networks. This can be disabled
+#     by sudoedit /etc/avahi/avahi-daemon.conf
+#   * Uncomment allow-interfaces=eth0 so it is explicit (this presumes eth0 is your LAN)
+#   * Add a new line: deny-interfaces enxyyzzaabb,enxddeeffgg
+#   * sudo restart avahi-daemon
+#
+# * iptables masquerading must be enabled:
+#
+#   iptables -t nat -I POSTROUTING -o enxyyzzaabb -j MASQUERADE
+#   iptables -t nat -I POSTROUTING -o enxddeeffgg -j MASQUERADE
+#
+#   These must be made permanent in your firewall configuration
+#
+# Add ip forwarding
+#
+# sudo echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/21-ipforward.conf  # "21-ipforward" can be any string. ".conf" must be ".conf"
+#   sudo sysctl net.ipv4.ip_forward=1
+# or
+#   sudo sysctl --load /etc/sysctl.d/21-ipforward.conf
+#
+# If still not working, this may help. Unclear.
+#
+#  sudo sysctl net.ipv4.conf.all.proxy_arp=1 | tee -a /etc/sysctl.d/21-ipforward.conf
+#
+
+
