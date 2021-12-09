@@ -268,7 +268,7 @@ spstate=1                    # Hot standby initial state
 
 script=$(basename $0)
 cmdline="$0 $*"
-OARGS=$(getopt -o h --longoptions help,action:,datefmt:,ddns,einterval:,internet:,interval:,noping,ping:,pingcount:,standby:,syslog -n $script -- "$@")
+OARGS=$(getopt -o h --longoptions help,action:,datefmt:,ddns,einterval:,internet:,interval:,noping,ping:,pingcount:,pingwait:,standby:,syslog -n $script -- "$@")
 [ $? != 0 ] && echo "? ${script}: Command parse failed" && exit 1
 eval set -- "$OARGS"
 
