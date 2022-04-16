@@ -24,6 +24,9 @@ Requires=network-online.target
 #xnoextip=0       # Don't check/report public internet IP address
 #xpingcount=""    # ping xmonitorip xpingcount times every xinterval seconds and call action script with ping results
 #xpingwait=1      # Wait this many seconds for ping response [1]
+#
+# See https://github.com/gitbls/internet-monitor/README.md
+#
 
 ExecStart=/usr/local/bin/internet-monitor --syslog --instance %I
 User=root
