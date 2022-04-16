@@ -15,7 +15,7 @@ Download the internet-monitor files from GitHub, and edit the file /etc/systemd/
 * `sudo chmod 755 /usr/local/bin/internet-monitor`
 * `sudo curl -L https://raw.githubusercontent.com/gitbls/internet-monitor/master/internet-monitor.service -o /etc/systemd/system/internet-monitor.service`
 * `sudo curl -L https://raw.githubusercontent.com/gitbls/internet-monitor/master/internet-monitor@.service -o /etc/systemd/system/internet-monitor@.service`
-* `sudo curl -L https://raw.githubusercontent.com/gitbls/internet-monitor/master/internet-monitor.instance -o /etc/default/internet-monitor.instance
+* `sudo curl -L https://raw.githubusercontent.com/gitbls/internet-monitor/master/internet-monitor.instance -o /etc/default/internet-monitor.instance`
 * `sudo nano /etc/systemd/system/internet-monitor.service` &mdash; Edit the ExecStart command line to adjust as needed, *or* use instances. See below.
 * `sudo systemctl daemon-reload`
 * `sudo systemctl enable [--now] internet-monitor` &mdash; Enable the service to start on the next boot. Use `--now` to start it now as well (good for testing!)
