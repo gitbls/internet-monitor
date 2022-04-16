@@ -5,10 +5,10 @@
 
 imalog() {
     # $1: String to output to syslog
-    logger "Internet-Monitor Action: $1"
+    logger "Internet-Monitor ${SINSTANCE}Action: $1"
 }
 read_config() {
-    [ -f /etc/default/internet-monitor ] && source /etc/default/internet-monitor
+    [ -f /etc/default/internet-monitor-action.${IMINSTANCE} ] && source /etc/default/internet-monitor-action.${IMINSTANCE}
 }
 maxstrlen() {
     # $1="list of words"
@@ -38,7 +38,7 @@ _main() {
     case "${1,,}" in
 	start)
 	    read_config
-	    imalog "Internet Monitor Settings from /etc/default/internet-monitor:"
+	    imalog "Internet Monitor Settings from /etc/default/internet-monitor-action.${IMINSTANCE}:"
 	    allsettings="primary_dns_server primary_dns_lookup"
 	    maxlen=$(maxstrlen "$allsettings")
 	    for s in $allsettings
@@ -152,7 +152,8 @@ exit 0
 #
 # To configure DNS refutation:
 #
-# /etc/default/internet-monitor config controls actions of this script. 
+# /etc/default/internet-monitor-action.${instance} config controls actions of this script.
+# Default instance is "primary", or you can specify your own instance in the internet-monitor command line
 # Content example with descriptions, which can be in the file since it's sourced by bash:
 #
 #    primary_dns_server=           # DNS Server IP to use for DNS lookups on primary network

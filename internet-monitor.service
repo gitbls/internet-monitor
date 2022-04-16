@@ -3,19 +3,23 @@ Description=Internet Online Monitor
 Requires=network-online.target
 
 [Service]
-# --einterval N                         Check External IP Address every N --intervals
-# --internet IP                         Internet IP address to ping [1.1.1.1]
-# --interval N                          When online, perform check every N seconds [10]
-# --noping                              Do not monitor internet up/down, only monitor External IP Address
-# --ping IPlist                         Comma-separated list of additional IP addresses to ping [""]
-# --pingwait N                          Wait N seconds for a ping response [1]
-# --pingcount N                         Also do a ping test with N pings (see doc)
-# --ddns                                Monitor External IP address for changes
 # --action /full/path/to/action/script  Script to run for internet state changes/external IP changes/ping results
+# --addping IPlist                      Comma-separated list of additional IP addresses to ping [""]
+# --ddns                                Monitor External IP address for changes
+# --ddnsonly                            Do not monitor internet up/down, only monitor External IP Address
+# --einterval N                         Check External IP Address every N --intervals
+# --instance name                       Specifies instance name [D:primary] 
+# --interval N                          When online, perform check every N seconds [10]
+# --monitorip IP                        Internet IP address to ping [1.1.1.1]
+# --noextip                             Don't track/report External IP Address changes
+# --pingcount N                         Also do a ping test with N pings (see doc)
+# --pingwait N                          Wait N seconds for a ping response [1]
 # --standby IP                          Secondary IP to check and action on for warm standby solutions
 # --syslog                              Log to syslog
 #
-ExecStart=/usr/local/bin/internet-monitor --syslog --interval 10 --internet 1.1.1.1
+# See https://github.com/gitbls/internet-monitor/README.md for details
+#
+ExecStart=/usr/local/bin/internet-monitor --syslog --interval 10 --monitorip 1.1.1.1
 User=root
 StandardInput=null
 Restart=on-failure

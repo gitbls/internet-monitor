@@ -11,7 +11,7 @@ debuglog() {
 }	
 imalog() {
     # $1: String to output to syslog
-    logger "Internet-Monitor Action: $1"
+    logger "Internet-Monitor ${SINSTANCE}Action: $1"
 }
 config_err() {
     missing=""
@@ -25,7 +25,7 @@ config_err() {
     echo "$missing"
 }
 read_config() {
-    [ -f /etc/default/internet-monitor ] && source /etc/default/internet-monitor
+    [ -f /etc/default/internet-monitor-action.${IMINSTANCE} ] && source /etc/default/internet-monitor-action.${IMINSTANCE}
 }
 check_config() {
     [ -n "$(config_err)" ] && failover_enabled="no" # Disable network failover if incomplete config
@@ -119,24 +119,24 @@ islinkup() {
 }
 mkflagfile() {
     # $1 is the filename
-    # Created in /tmp/internet-monitor
+    # Created in /tmp/internet-monitor.${IMINSTANCE}
     #
-    mkdir -p /tmp/internet-monitor
-    touch /tmp/internet-monitor/$1
+    mkdir -p /tmp/internet-monitor.${IMINSTANCE}
+    touch /tmp/internet-monitor.${IMINSTANCE}/$1
 }
 rmflagfile() {
     # $1-$4 are the filenames
     # Deleted from /tmp/internet-monitor
     #
-    [ "$1" != "" ] && rm -f /tmp/internet-monitor/$1
-    [ "$2" != "" ] && rm -f /tmp/internet-monitor/$2
-    [ "$3" != "" ] && rm -f /tmp/internet-monitor/$3
-    [ "$4" != "" ] && rm -f /tmp/internet-monitor/$4
+    [ "$1" != "" ] && rm -f /tmp/internet-monitor.${IMINSTANCE}/$1
+    [ "$2" != "" ] && rm -f /tmp/internet-monitor.${IMINSTANCE}/$2
+    [ "$3" != "" ] && rm -f /tmp/internet-monitor.${IMINSTANCE}/$3
+    [ "$4" != "" ] && rm -f /tmp/internet-monitor.${IMINSTANCE}/$4
 }
 isflagfile() {
     # $1 is the filename
     # returns true if exists, else false
-    [ -f /tmp/internet-monitor/$1 ] && return 0 || return 1
+    [ -f /tmp/internet-monitor.${IMINSTANCE}/$1 ] && return 0 || return 1
 }
 failover_to_primary() {
     #
@@ -225,13 +225,13 @@ _main() {
 	    missing="$(config_err)"
 	    if [ -n "$missing" ]
 	    then
-		imalog "%% One or more required definitions are missing from /etc/default/internet-monitor:"
+		imalog "%% One or more required definitions are missing from /etc/default/internet-monitor-action.${IMINSTANCE}:"
 		imalog "%% $missing"
 		imalog "%% Refer to $0 for details"
 		imalog "%% These MUST be corrected to enable Network Failover"
 		failover_enabled="1"  # Disable network failover for this call. All other calls use check_config
 	    fi
-	    imalog "Internet Monitor Settings from /etc/default/internet-monitor:"
+	    imalog "Internet Monitor Settings from /etc/default/internet-monitor-action.${IMINSTANCE}:"
 	    allsettings="imdebug failover_enabled prefer_primary primary_if primary_gw primary_ping primary_delay \
 standby_if standby_gw standby_ping standby_delay primary_dns_server primary_dns_lookup standby_dns_server standby_dns_lookup"
 	    maxlen=$(maxstrlen "$allsettings")
@@ -350,16 +350,16 @@ standby_if standby_gw standby_ping standby_delay primary_dns_server primary_dns_
 	    check_config
 	    imalog "Ask internet-monitor to dump internal status"
             rmflagfile primary-refuted
-	    rm -f /tmp/internet-monitor-cmd
-	    echo "dump" > /tmp/internet-monitor-cmd
+	    rm -f /tmp/internet-monitor-cmd.${IMINSTANCE}
+	    echo "dump" > /tmp/internet-monitor-cmd.${IMINSTANCE}
 	    return
 	    ;;
 	reset-network-status)
 	    check_config
 	    [ "$failover_enabled" != "yes" ] && return
 	    imalog "Ask internet-monitor to reset Network Status"
-	    rm -f /tmp/internet-monitor-cmd
-	    echo "reset"> /tmp/internet-monitor-cmd
+	    rm -f /tmp/internet-monitor-cmd.${IMINSTANCE}
+	    echo "reset"> /tmp/internet-monitor-cmd.${IMINSTANCE}
 	    return
 	    ;;
 	ping)
@@ -422,7 +422,7 @@ exit 0
 #   $2: new-external-IP-address
 #   $3: old-external-ip-address
 #
-# /etc/default/internet-monitor config controls actions of this script. 
+# /etc/default/internet-monitor-action.${IMINSTANCE} config controls actions of this script. 
 # Content example with descriptions, which can be in the file since it's sourced by bash:
 #
 #    imdebug=no                    # yes=enable debug features (there aren't many)
@@ -446,7 +446,7 @@ exit 0
 #    * No DNS offline refute checking is done
 #    * Other defaults: pingcount=1, pingwait=1, debug mode disabled
 #
-# * /etc/default/internet-monitor is read on each call to this script, so if you want to change
+# * /etc/default/internet-monitor-action.${IMINSTANCE} is read on each call to this script, so if you want to change
 #   a setting, there's no need to restart internet-monitor.
 #
 # * Network Failover-specific notes
@@ -463,7 +463,7 @@ exit 0
 #     This script will check and log if it should be enabled but isn't. It will not, however, disable Network Failover.
 #     Failing to make this change can result in significant issues, since network device names can change across reboots
 #     or device removals/insertions. If the device names change, the failover network configuration
-#     defined in /etc/default/internet-monitor will be incorrect, resulting in unpredictable operation.
+#     defined in /etc/default/internet-monitor-action.${IMINSTANCE} will be incorrect, resulting in unpredictable operation.
 #
 #   * Network Failover prefers the primary network if prefer_primary=yes. This means that
 #     if on the standby network because primary down, Network Failover will switch back to using the primary
@@ -531,5 +531,3 @@ exit 0
 #
 #  sudo sysctl net.ipv4.conf.all.proxy_arp=1 | tee -a /etc/sysctl.d/21-ipforward.conf
 #
-
-
