@@ -1,0 +1,34 @@
+#
+# Any or all of these can be changed.
+# To change an item, uncomment it (remove '#') and set the value you want
+#
+
+# --actscript or --action - Action script to call on events
+#xactscript=""
+
+# --addping - Comma-separated list of additional IP addresses to check when monitored IP is down
+#xaddping=""
+
+# --ddns - Perform ddns processing if 1. Conflicts with xnoextip=1
+#xddns=0
+
+# --ddnsonly - ONLY track External IP Address. Do not monitor xmonitorip
+#xddnsonly=0
+
+# --einterval - Number of intervals to wait between External IP Address checks if --ddns [60]
+#xeinterval=60
+
+# --interval - Number of seconds between tests for xmonitorip accessibility [10]
+#xinterval=10
+
+# --monitorip - IP address to monitor
+#xmonitorip="1.1.1.1"
+
+# --noextip - Do not perform External IP Address tracking if xnoextip=1
+#xnoextip=0
+
+# --pingcount - Do ping test against Monitored IP and provide ping statistics to Action Script
+#xpingcount=""
+
+# --pingwait - Wait this many seconds for a ping response [1]
+#xpingwait=1
