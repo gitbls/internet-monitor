@@ -1,0 +1,34 @@
+[Unit]
+Description=Internet Online Monitor for instance %I
+Requires=network-online.target
+
+[Service]
+#
+# Instance-specific service for internet-monitor
+#
+# Requires a file named /etc/default/internet-monitor.instancename (e.g., internet-monitor.sun)
+#
+# /etc/default/internet-monitor.instancename contents:
+#
+# Any or all of these can be changed.
+# To change an item, uncomment it (remove '#') and set the value you want
+#
+#xactscript=""    # Action script to run for internet state changes/external IP changes/ping results
+#xaddping=""      # Comma-separated list of IP address to check when internet is down
+#                 #    or @file for a list of additional IPs to check
+#xddns=0          # 1=Perform external internet IP address change checking/reporting
+#xddnsonly=0      # Only monitor public IP address, don't check internet up/down
+#xeinterval=60    # Number of xinterval waits between External IP address checks if --ddns
+#xinterval=10     # Number of seconds between tests for xmonitorip being up
+#xmonitorip=""    # IP address to monitor
+#xnoextip=0       # Don't check/report public internet IP address
+#xpingcount=""    # ping xmonitorip xpingcount times every xinterval seconds and call action script with ping results
+#xpingwait=1      # Wait this many seconds for ping response [1]
+
+ExecStart=/usr/local/bin/internet-monitor --syslog --instance %I
+User=root
+StandardInput=null
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
