@@ -7,6 +7,8 @@ internet-monitor regularly checks your internet connectivity and logs outages. I
 
 internet-monitor is easily installed and runs as a systemd service. 
 
+**NOTE:** This app is retired. Please see [imon](https://github.com/gitbls/imon) for an app that is based on this, but offers more flexibility and capabilities, and much better performance.
+
 ## Installation
 
 Download the internet-monitor files from GitHub, and edit the file /etc/systemd/system/internet-monitor.service as needed for your configuration.
